@@ -1,0 +1,1571 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0E0E10">
+<title>Каталог Сочи · CRM</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+:root {
+  --bg: #0E0E10;
+  --surface: #1C1C1E;
+  --surface-2: #2C2C2E;
+  --border: #2C2C2E;
+  --text: #ffffff;
+  --text-muted: #8E8E93;
+  --accent: #C9A36A;
+  --accent-text: #1a1a1a;
+  --success: #1D9E75;
+  --warn: #BA7517;
+  --info: #378ADD;
+  --danger: #E24B4A;
+  --ct-vip: #7F77DD;
+  --ct-investor: #1D9E75;
+  --ct-hot: #E24B4A;
+  --ct-long: #8E8E93;
+  --safe-bottom: env(safe-area-inset-bottom);
+}
+[data-theme="light"] {
+  --bg: #F5F5F7;
+  --surface: #FFFFFF;
+  --surface-2: #EFEFF1;
+  --border: #E5E5EA;
+  --text: #1A1A1A;
+  --text-muted: #6E6E73;
+  --accent: #B8893D;
+  --accent-text: #FFFFFF;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin:0; padding:0; height:100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif; }
+body { overscroll-behavior-y: contain; }
+
+#app { display: flex; flex-direction: column; height: 100vh; max-width: 480px; margin: 0 auto; background: var(--bg); }
+.topbar { display:flex; align-items:center; justify-content:space-between; padding: max(env(safe-area-inset-top), 14px) 16px 8px; }
+.topbar h1 { font-size: 20px; font-weight: 600; margin: 0; }
+.topbar .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.icon-btn { background: var(--surface); border: 0; color: var(--text); width: 36px; height: 36px; border-radius: 10px; font-size: 16px; display:flex; align-items:center; justify-content:center; cursor: pointer; }
+
+.content { flex: 1; overflow-y: auto; padding: 8px 16px 90px; -webkit-overflow-scrolling: touch; }
+
+.tabs { display:flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { font-size: 13px; padding: 7px 14px; border-radius: 999px; white-space: nowrap; cursor: pointer; background: var(--surface); color: var(--text-muted); border: 0; }
+.tab.active { background: var(--accent); color: var(--accent-text); font-weight: 500; }
+
+.card { background: var(--surface); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
+.card-row { display:flex; justify-content:space-between; align-items:flex-start; gap: 10px; }
+.card h3 { font-size: 15px; font-weight: 500; margin: 0; }
+.card p.meta { font-size: 12px; color: var(--text-muted); margin: 3px 0 0; }
+
+.pill { font-size: 11px; padding: 4px 9px; border-radius: 7px; white-space: nowrap; }
+.pill.s-new { background: rgba(29,158,117,.15); color: var(--success); }
+.pill.s-show { background: rgba(186,117,23,.18); color: var(--warn); }
+.pill.s-deal { background: rgba(55,138,221,.18); color: var(--info); }
+.pill.s-done { background: rgba(142,142,147,.18); color: var(--text-muted); }
+.pill.s-overdue { background: rgba(226,75,74,.18); color: var(--danger); }
+.pill.s-zadatok { background: rgba(201,163,106,.2); color: var(--accent); }
+.pill.s-vip { background: rgba(127,119,221,.18); color: #7F77DD; }
+.pill.s-investor { background: rgba(29,158,117,.15); color: var(--success); }
+.pill.s-hot { background: rgba(226,75,74,.18); color: var(--danger); }
+.pill.s-long { background: rgba(142,142,147,.18); color: var(--text-muted); }
+.pills-row { display:flex; gap: 6px; flex-wrap: wrap; }
+.client-mini {
+  display:flex; align-items:center; gap: 8px;
+  padding: 6px 10px; margin-bottom: 3px;
+  background: var(--surface); border-radius: 8px;
+  border-left: 3px solid transparent;
+  font-size: 12px; cursor: pointer;
+  min-height: 34px;
+}
+.client-mini .cm-main { flex: 1; min-width: 0; display:flex; flex-direction:column; gap: 1px; overflow: hidden; }
+.client-mini .cm-name { font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: 1.2; }
+.client-mini .cm-meta { color: var(--text-muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+.client-mini .cm-next { color: var(--accent); font-size: 10px; white-space: nowrap; }
+.card-mini { background: var(--surface); border-radius: 8px; padding: 8px 12px; font-size: 12px; margin-bottom: 4px; }
+.filter-panel {
+  background: var(--surface); border-radius: 12px; padding: 8px 10px;
+  margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px;
+}
+.fp-row { display:flex; align-items:center; gap: 6px; }
+.fp-lbl { font-size: 11px; color: var(--text-muted); width: 75px; flex-shrink: 0; }
+.fp-input {
+  flex: 1; min-width: 0;
+  background: var(--bg); color: var(--text);
+  border: 0.5px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; font-size: 13px; font-family: inherit;
+  -webkit-appearance: none;
+}
+.fp-input:focus { outline: 1.5px solid var(--accent); }
+.fp-reset {
+  background: transparent; color: var(--text-muted);
+  border: 0; padding: 6px; font-size: 12px; cursor: pointer;
+  text-align: right; align-self: flex-end;
+}
+
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  max-width: 480px; margin: 0 auto;
+  background: var(--bg);
+  border-top: 0.5px solid var(--border);
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  z-index: 50;
+}
+.nav-item { background: transparent; border: 0; color: var(--text-muted); font-size: 10px; display:flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px; cursor: pointer; }
+.nav-item .ico { font-size: 18px; line-height: 1; }
+.nav-item.active { color: var(--accent); }
+
+.fab {
+  position: fixed; bottom: calc(80px + env(safe-area-inset-bottom)); right: 20px;
+  background: var(--accent); color: var(--accent-text);
+  width: 52px; height: 52px; border-radius: 50%;
+  display:flex; align-items:center; justify-content: center;
+  font-size: 26px; border: 0; cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0,0,0,.25);
+  z-index: 40;
+}
+
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  display:none; align-items:flex-end; justify-content:center;
+  z-index: 100; opacity: 0; transition: opacity .2s;
+}
+.modal-bg.open { display:flex; opacity: 1; }
+.modal {
+  background: var(--bg); width: 100%; max-width: 480px;
+  border-radius: 22px 22px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  max-height: 90vh; overflow-y: auto;
+  transform: translateY(100%); transition: transform .25s;
+}
+.modal-bg.open .modal { transform: translateY(0); }
+.modal h2 { font-size: 18px; margin: 0 0 14px; font-weight: 600; }
+.modal .grab { width: 36px; height: 4px; background: var(--surface-2); border-radius: 999px; margin: 0 auto 12px; }
+
+.field { margin-bottom: 12px; }
+.field label { display:block; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .3px; }
+.field input, .field select, .field textarea {
+  width: 100%; background: var(--surface); border: 0.5px solid var(--border); color: var(--text);
+  border-radius: 10px; padding: 11px 12px; font-size: 15px; font-family: inherit;
+}
+.field textarea { min-height: 70px; resize: vertical; }
+.field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--accent); }
+
+.btn { display:block; width: 100%; background: var(--accent); color: var(--accent-text); border: 0; padding: 13px; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.btn.ghost { background: var(--surface); color: var(--text); }
+.btn.danger { background: transparent; color: var(--danger); }
+.btn-row { display:flex; gap: 8px; margin-top: 12px; }
+.btn-row .btn { flex: 1; }
+
+.search { width: 100%; background: var(--surface); border: 0; color: var(--text); padding: 11px 14px; border-radius: 12px; font-size: 14px; margin-bottom: 12px; }
+
+.empty { text-align: center; padding: 50px 20px; color: var(--text-muted); }
+.empty .ico { font-size: 42px; opacity: .3; margin-bottom: 10px; }
+.empty p { font-size: 14px; margin: 0; }
+
+.list-item { display:flex; gap: 10px; align-items:center; padding: 12px 0; border-bottom: 0.5px solid var(--border); cursor: pointer; }
+.avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--surface-2); color: var(--text); display:flex; align-items:center; justify-content:center; font-size: 13px; font-weight: 500; flex-shrink: 0; }
+.avatar.acc { background: var(--accent); color: var(--accent-text); }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+.kpi { background: var(--surface); border-radius: 14px; padding: 12px 14px; }
+.kpi .label { font-size: 11px; color: var(--text-muted); }
+.kpi .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+
+.section-h { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; margin: 16px 0 8px; }
+
+.check { width: 22px; height: 22px; border-radius: 7px; border: 1.5px solid var(--text-muted); flex-shrink: 0; display:flex; align-items:center; justify-content: center; cursor: pointer; }
+.check.done { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-size: 13px; }
+.task-text.done { text-decoration: line-through; color: var(--text-muted); }
+
+.cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 6px; }
+.cal-head div { text-align: center; font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-day { aspect-ratio: 1; display:flex; align-items:center; justify-content:center; font-size: 14px; border-radius: 8px; position: relative; cursor: pointer; }
+.cal-day.muted { color: var(--text-muted); opacity: .5; }
+.cal-day.today { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.cal-day.selected { background: var(--surface); }
+.cal-day.has-event::after { content:''; position: absolute; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+.cal-day.today.has-event::after { background: var(--accent-text); }
+
+.gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.prop-card { background: var(--surface); border-radius: 14px; overflow: hidden; cursor: pointer; }
+.prop-img { aspect-ratio: 4/3; background: linear-gradient(135deg, var(--surface-2), var(--surface)); position: relative; display:flex; align-items:center; justify-content:center; color: var(--text-muted); font-size: 30px; }
+.prop-card .body { padding: 8px 10px 12px; }
+.prop-card h4 { font-size: 13px; margin: 0; font-weight: 500; }
+.prop-card .price { color: var(--accent); font-size: 14px; font-weight: 600; margin: 4px 0 2px; }
+.prop-card .meta { font-size: 11px; color: var(--text-muted); }
+
+.balance-card {
+  background: linear-gradient(135deg, var(--accent), #8d6f3e);
+  color: var(--accent-text); border-radius: 16px; padding: 16px;
+  margin-bottom: 12px;
+}
+.balance-card .label { font-size: 12px; opacity: .8; }
+.balance-card .value { font-size: 28px; font-weight: 600; margin: 6px 0 4px; }
+.balance-card .sub { font-size: 12px; opacity: .75; }
+
+.toggle { display:inline-flex; background: var(--surface); padding: 3px; border-radius: 999px; gap: 2px; }
+.toggle button { background: transparent; border: 0; color: var(--text-muted); padding: 6px 14px; border-radius: 999px; font-size: 13px; cursor: pointer; }
+.toggle button.on { background: var(--bg); color: var(--text); }
+
+.profile-row { display:flex; align-items:center; justify-content: space-between; padding: 14px 0; border-bottom: 0.5px solid var(--border); cursor: pointer; }
+.profile-row .label { font-size: 14px; }
+.profile-row .val { font-size: 13px; color: var(--text-muted); }
+
+/* table view */
+.tbl-wrap { overflow-x: auto; margin: 0 -16px; padding: 0 16px; }
+table.crm { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 600px; }
+table.crm th { text-align: left; color: var(--text-muted); font-weight: 400; font-size: 11px; padding: 8px 6px; border-bottom: 0.5px solid var(--border); white-space: nowrap; text-transform: uppercase; letter-spacing: .3px; }
+table.crm td { padding: 10px 6px; border-bottom: 0.5px solid var(--border); white-space: nowrap; }
+
+@media (display-mode: standalone) {
+  .topbar { padding-top: max(env(safe-area-inset-top), 20px); }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar" class="topbar"></div>
+  <div id="content" class="content"></div>
+  <button id="fab" class="fab" onclick="onFab()">+</button>
+  <nav class="bottom-nav" id="nav"></nav>
+</div>
+
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+/* ============================== STATE ============================== */
+const LS_KEY = 'sochi-crm-v1';
+const defaultState = () => ({
+  theme: 'dark',
+  user: { name: 'Алёна', phone: '', role: 'Агент', city: 'Сочи', balance: 0, subscriptionEnd: null, refCode: 'AK' + Math.floor(Math.random()*9000+1000) },
+  clients: [
+    { id: id(), name: 'Анна Иванова', phone: '+7 988 555-12-34', status: 'hot', responsible: 'Алёна', type: '2-комн', budget: '15 млн', budgetMln: 15, area: 'Адлер, Сириус', requestComment: '2-комн до 15 млн в Адлере/Сириусе, ипотека одобрена', note: 'Ипотека одобрена', nextContact: dateISO(0,14), nextAction: 'Показ', created: dateISO(-8) },
+    { id: id(), name: 'Дмитрий Котов', phone: '+7 928 444-99-01', status: 'show', responsible: 'Алёна', type: 'Студия', budget: '8 млн', budgetMln: 8, area: 'Сириус', requestComment: 'Студия до 8 млн, готовая, под сдачу', note: 'Показ ЖК Олимпийский', nextContact: dateISO(0,17,30), nextAction: 'Позвонить', created: dateISO(-11) },
+    { id: id(), name: 'Семья Петровых', phone: '+7 905 222-10-44', status: 'vip', responsible: 'М. Колесников', type: '3-комн', budget: '25 млн', budgetMln: 25, area: 'Центральный Сочи', requestComment: '3-комн с ремонтом, центр Сочи, школы рядом', note: 'Подписание договора', nextContact: dateISO(1,11), nextAction: 'Подписать договор', created: dateISO(-57) },
+    { id: id(), name: 'Р. Михайлов', phone: '+7 928 811-44-90', status: 'investor', responsible: 'Алёна', type: '4+', budget: '45 млн', budgetMln: 45, area: 'Сириус', requestComment: 'Инвестпортфель: 2-3 объекта под сдачу/перепродажу', note: '', nextContact: dateISO(2,16), nextAction: 'Отправить подборку', created: dateISO(-5) },
+  ],
+  agents: ['Алёна', 'М. Колесников', 'Е. Сидорова'],
+  properties: [
+    { id: id(), title: 'кв.142', complex: 'ЖК Морская симфония', kind: 'new', rooms: '2-комн', bedrooms: 2, reno: '', area: '64 м²', price: 12400000, district: 'Адлер', developer: 'Сириус Девелопмент', note: 'Сдача 4кв 2026' },
+    { id: id(), title: 'Студия 21', complex: 'ЖК Олимпийский', kind: 'new', rooms: 'Студия', bedrooms: 0, reno: '', area: '32 м²', price: 8900000, district: 'Сириус', developer: 'СК Олимп', note: 'Готов, ключи сразу' },
+    { id: id(), title: 'кв.301', complex: 'ЖК Морская симфония', kind: 'new', rooms: '3-комн', bedrooms: 3, reno: '', area: '88 м²', price: 16800000, district: 'Адлер', developer: 'Сириус Девелопмент', note: '' },
+    { id: id(), title: 'кв.55', complex: 'ЖК Каскад', kind: 'flat', rooms: '3-комн', bedrooms: 3, reno: 'euro', area: '78 м²', price: 21000000, district: 'Центр', developer: '', note: 'Свежий ремонт' },
+    { id: id(), title: 'кв.12', complex: 'ЖК Морская симфония', kind: 'flat', rooms: '2-комн', bedrooms: 2, reno: 'cosmetic', area: '58 м²', price: 13500000, district: 'Адлер', developer: '', note: 'С мебелью' },
+    { id: id(), title: 'Дом в Кудепсте', complex: 'КП Кудепста', kind: 'house', rooms: '4-комн', bedrooms: 4, reno: 'design', area: '180 м² · 6 сот', price: 38000000, district: 'Хоста', developer: '', note: 'Современный дом, бассейн' },
+    { id: id(), title: 'Коттедж Альпийский', complex: 'КП Красная Поляна', kind: 'house', rooms: '5-комн', bedrooms: 5, reno: 'design', area: '240 м² · 10 сот', price: 65000000, district: 'Красная Поляна', developer: '', note: 'Видовой участок, баня' },
+    { id: id(), title: 'Секция 7', complex: 'ТХ Морской бриз', kind: 'th', rooms: '3-комн', bedrooms: 3, reno: 'euro', area: '110 м² · 2 сот', price: 19500000, district: 'Адлер', developer: 'ЮгСтрой', note: '2 уровня, терраса' },
+    { id: id(), title: 'Секция 12', complex: 'ТХ Олимпийская деревня', kind: 'th', rooms: '4-комн', bedrooms: 4, reno: '', area: '135 м² · 3 сот', price: 26000000, district: 'Сириус', developer: 'Olimp Town', note: 'Закрытая территория' },
+  ],
+  tasks: [
+    { id: id(), title: 'Показ ЖК Морская — А. Иванова', when: dateISO(0,14), done: false, clientId: null },
+    { id: id(), title: 'Звонок Дмитрию К.', when: dateISO(0,17,30), done: false, clientId: null },
+    { id: id(), title: 'Отправить подборку Морозову', when: dateISO(-1,12), done: false, clientId: null },
+    { id: id(), title: 'Встреча с застройщиком', when: dateISO(1,10), done: false, clientId: null },
+  ],
+  referrals: [
+    { id: id(), name: 'И. Морозов', amount: 250, when: dateISO(-3) },
+    { id: id(), name: 'А. Волков', amount: 250, when: dateISO(-10) },
+    { id: id(), name: 'О. Кузнецова', amount: 250, when: dateISO(-18) },
+  ],
+  partnerDeals: [
+    { id: id(), object: 'ЖК Морская, кв.142', sum: 12400000, commission: 372000, mySharePct: 60, status: 'pending', partner: 'М. Колесников' },
+  ],
+  deals: [
+    { id: id(), object: 'ЖК Олимпийский, ст.21', client: 'Д. Котов', date: dateISO(-30), price: 8900000, commission: 267000, expenses: 18000, received: 130000, note: 'Аванс получен' },
+    { id: id(), object: 'ЖК Морская, кв.142', client: 'Семья Петровых', date: dateISO(-2), price: 12400000, commission: 372000, expenses: 22000, received: 0, note: 'Ожидание выплаты' },
+  ],
+});
+
+function id() { return Math.random().toString(36).slice(2, 10); }
+function dateISO(daysOffset = 0, hour = null, minute = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + daysOffset);
+  if (hour !== null) d.setHours(hour, minute, 0, 0);
+  return d.toISOString();
+}
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_KEY));
+    if (s && s.clients) {
+      // миграции: добавляем недостающие поля для старых данных
+      if (!s.agents) s.agents = ['Алёна', 'М. Колесников', 'Е. Сидорова'];
+      if (!s.deals) s.deals = [];
+      s.clients.forEach(c => {
+        if (c.responsible === undefined) c.responsible = s.user?.name || 'Алёна';
+        if (c.nextAction === undefined) c.nextAction = '';
+        if (c.requestComment === undefined) c.requestComment = '';
+        // объединяем clientType со status (тип имеет приоритет если статус — базовый new)
+        if (c.clientType && (c.status === 'new' || !c.status)) c.status = c.clientType;
+        delete c.clientType;
+      });
+      s.properties.forEach(p => {
+        if (p.complex === undefined) p.complex = p.title || '';
+        if (p.kind === 'sec') p.kind = 'flat';
+        if (p.photo === undefined) p.photo = '';
+        if (p.commission === undefined) p.commission = '';
+        if (p.bedrooms === undefined) p.bedrooms = parseBedrooms(p.rooms);
+        if (p.reno === undefined) p.reno = '';
+      });
+      saveState(s);
+      return s;
+    }
+  } catch(e) {}
+  const s = defaultState();
+  saveState(s);
+  return s;
+}
+function saveState(s) { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
+let state = loadState();
+let route = 'home';
+let crmTab = 'tasks';
+let propTab = 'new';
+let propSort = 'price-asc';
+let propGroup = false;
+let propSearch = '';
+let propFilters = { priceMin: null, priceMax: null, district: '', bedrooms: '', reno: '' };
+let propFiltersOpen = false;
+let propView = 'grid'; // grid | group | table
+let clientFilters = { status: '', budgetMin: null, budgetMax: null, nextRange: '' };
+let clientFiltersOpen = false;
+let clientSearch = '';
+let taskFilter = 'all';
+let calDate = new Date();
+let selectedDay = null;
+
+/* ============================== HELPERS ============================== */
+const fmtMoney = (n) => new Intl.NumberFormat('ru-RU').format(n) + ' ₽';
+const fmtMoneyShort = (n) => {
+  if (n >= 1000000) return (n/1000000).toFixed(1).replace('.0','') + ' млн ₽';
+  if (n >= 1000) return (n/1000).toFixed(0) + ' т ₽';
+  return n + ' ₽';
+};
+const fmtDate = (iso) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+};
+const fmtDateTime = (iso) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) +
+         ' · ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+};
+const fmtTime = (iso) => {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+};
+const initials = (name) => name.split(' ').slice(0,2).map(p => p[0]).join('').toUpperCase();
+const isSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const isOverdue = (iso) => iso && new Date(iso) < new Date() && !isSameDay(new Date(iso), new Date());
+const STATUSES = ['hot','vip','investor','long','new','show','zadatok','deal','done','archive'];
+const statusLabel = (s) => ({
+  new:'Подбор', show:'Показ', zadatok:'Задаток', deal:'Сделка',
+  vip:'VIP', investor:'Инвестор', hot:'Горячий', long:'Долгий',
+  done:'Завершён', archive:'Архив'
+})[s] || s;
+const statusClass = (s) => ({
+  new:'s-new', show:'s-show', zadatok:'s-zadatok', deal:'s-deal',
+  vip:'s-vip', investor:'s-investor', hot:'s-hot', long:'s-long',
+  done:'s-done', archive:'s-done'
+})[s] || 's-done';
+const statusStripe = (s) => ({
+  new:'var(--info)', show:'var(--warn)', zadatok:'var(--accent)', deal:'var(--success)',
+  vip:'var(--ct-vip)', investor:'var(--ct-investor)', hot:'var(--ct-hot)', long:'var(--ct-long)',
+  done:'transparent', archive:'transparent'
+})[s] || 'transparent';
+const kindLabel = (k) => ({ new:'Новостройка', flat:'Квартира', house:'Дом', th:'Таунхаус' })[k] || k;
+function parseBedrooms(roomsStr) {
+  if (!roomsStr) return null;
+  const s = String(roomsStr).toLowerCase();
+  if (s.includes('студ')) return 0;
+  const m = s.match(/(\d+)/);
+  if (!m) return null;
+  return Math.min(5, +m[1]);
+}
+const bedroomsLabel = (n) => n === 0 ? 'Студия' : n >= 5 ? '5+' : n + '-комн';
+
+/* ============================== RENDER ============================== */
+function render() {
+  document.documentElement.setAttribute('data-theme', state.theme);
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', state.theme==='dark' ? '#0E0E10' : '#F5F5F7');
+  renderTopbar();
+  renderContent();
+  renderNav();
+  document.getElementById('fab').style.display = ['crm','clients','properties','tasks'].includes(route) ? 'flex' : 'none';
+}
+
+function renderTopbar() {
+  const titles = {
+    home: { t: 'Главная', s: state.user.name + ' · ' + state.user.role },
+    properties: { t: 'Объекты', s: state.properties.length + ' в каталоге' },
+    clients: { t: 'Клиенты', s: state.clients.length + ' всего' },
+    crm: {
+      t: crmTab==='deals' ? 'Сделки' : crmTab==='partner' ? 'Партнерка' : 'Задачи',
+      s: tabSub()
+    },
+    profile: { t: 'Профиль', s: state.user.phone || 'Настройки и подписка' },
+  };
+  const cur = titles[route] || titles.home;
+  document.getElementById('topbar').innerHTML = `
+    <div>
+      <h1>${cur.t}</h1>
+      <div class="sub">${cur.s}</div>
+    </div>
+    <button class="icon-btn" onclick="toggleTheme()" aria-label="Тема">${state.theme==='dark'?'☀':'☾'}</button>
+  `;
+}
+function tabSub() {
+  const map = {
+    tasks: state.tasks.filter(t=>!t.done).length + ' открытых',
+    calendar: 'События и встречи',
+    deals: state.deals.length + ' сделок',
+    partner: (state.partnerDeals.length + state.referrals.length) + ' записей',
+  };
+  return map[crmTab] || '';
+}
+
+function renderContent() {
+  const c = document.getElementById('content');
+  if (route === 'home') c.innerHTML = viewHome();
+  else if (route === 'properties') c.innerHTML = viewProperties();
+  else if (route === 'clients') c.innerHTML = viewClients();
+  else if (route === 'crm') c.innerHTML = viewCRM();
+  else if (route === 'profile') c.innerHTML = viewProfile();
+  c.scrollTop = 0;
+}
+
+function renderNav() {
+  const nav = [
+    { k:'home', ico:'⌂', label:'Главная' },
+    { k:'properties', ico:'▦', label:'Объекты' },
+    { k:'clients', ico:'☺', label:'Клиенты' },
+    { k:'crm', ico:'✓', label:'Задачи' },
+    { k:'profile', ico:'◉', label:'Профиль' },
+  ];
+  document.getElementById('nav').innerHTML = nav.map(n => `
+    <button class="nav-item ${route===n.k?'active':''}" onclick="go('${n.k}')">
+      <span class="ico">${n.ico}</span>
+      <span>${n.label}</span>
+    </button>
+  `).join('');
+}
+
+/* ============================== VIEWS ============================== */
+function viewHome() {
+  const todayTasks = state.tasks.filter(t => !t.done && isSameDay(new Date(t.when), new Date()));
+  const overdue = state.tasks.filter(t => !t.done && isOverdue(t.when));
+  const activeClients = state.clients.filter(c => c.status !== 'archive' && c.status !== 'done');
+  const hotSet = new Set(['hot','vip','zadatok']);
+  const hot = activeClients.filter(c => hotSet.has(c.status));
+  const otherActive = activeClients.filter(c => !hot.includes(c));
+  const dealsTotal = state.deals.reduce((s,d)=>s+((d.commission||0)-(d.expenses||0)-(d.received||0)),0);
+  const refTotal = state.referrals.reduce((s,r)=>s+r.amount, 0);
+
+  return `
+    <div class="kpi-grid">
+      <div class="kpi" onclick="goCrm('tasks')" style="cursor:pointer;">
+        <div class="label">Задач сегодня</div>
+        <div class="value">${todayTasks.length}${overdue.length?` <span style="font-size:13px; color:var(--danger);">+${overdue.length} проср.</span>`:''}</div>
+      </div>
+      <div class="kpi" onclick="go('clients')" style="cursor:pointer;">
+        <div class="label">Активных клиентов</div>
+        <div class="value">${activeClients.length}</div>
+      </div>
+      <div class="kpi" onclick="goCrm('deals')" style="cursor:pointer;">
+        <div class="label">Сделки · осталось</div>
+        <div class="value" style="color:var(--accent);">${fmtMoneyShort(dealsTotal)}</div>
+      </div>
+      <div class="kpi" onclick="goCrm('partner')" style="cursor:pointer;">
+        <div class="label">Партнерка · баланс</div>
+        <div class="value" style="color:var(--success);">${fmtMoneyShort(refTotal)}</div>
+      </div>
+    </div>
+
+    <div class="section-h">Сегодня</div>
+    ${todayTasks.length === 0 ? `<div class="card"><p class="meta" style="margin:0;">Задач на сегодня нет</p></div>` :
+      todayTasks.map(t => `
+        <div class="card" onclick="openTask('${t.id}')">
+          <div class="card-row">
+            <div><h3>${t.title}</h3><p class="meta">${fmtTime(t.when)}</p></div>
+          </div>
+        </div>`).join('')}
+
+    <div class="section-h">Горячие · ${hot.length}</div>
+    ${hot.length === 0 ? `<div class="card-mini"><span class="meta">Горячих клиентов нет</span></div>` :
+      hot.map(c => clientMiniRow(c)).join('')}
+
+    <div class="section-h">Активные · ${otherActive.length}</div>
+    ${otherActive.map(c => clientMiniRow(c)).join('')}
+  `;
+}
+function goCrm(tab) { route = 'crm'; crmTab = tab; render(); }
+
+function clientMiniRow(c) {
+  const next = c.nextContact ? fmtDate(c.nextContact) + (c.nextAction?' · '+c.nextAction:'') : '';
+  return `
+    <div class="client-mini" onclick="openClient('${c.id}')" style="border-left-color: ${statusStripe(c.status)};">
+      <div class="cm-main">
+        <span class="cm-name">${c.name}</span>
+        <span class="cm-meta">${[c.type, c.budget].filter(Boolean).join(' · ')}</span>
+      </div>
+      <span class="cm-next">${next}</span>
+      <span class="pill ${statusClass(c.status)}" style="font-size:10px; padding:2px 7px;">${statusLabel(c.status)}</span>
+    </div>`;
+}
+
+function clientCard(c) {
+  return `
+    <div class="card" style="border-left: 3px solid ${statusStripe(c.status)}; border-radius: 4px 14px 14px 4px;" onclick="openClient('${c.id}')">
+      <div class="card-row">
+        <div style="flex:1; min-width: 0;">
+          <h3>${c.name}</h3>
+          <p class="meta">${[c.type, c.budget, c.responsible].filter(Boolean).join(' · ')}</p>
+          ${c.requestComment ? `<p class="meta" style="margin-top:4px;">${c.requestComment}</p>` : ''}
+          ${c.nextContact ? `<p class="meta" style="margin-top:6px; color:var(--accent);">${fmtDateTime(c.nextContact)}${c.nextAction?` · ${c.nextAction}`:''}</p>` : ''}
+        </div>
+        <span class="pill ${statusClass(c.status)}">${statusLabel(c.status)}</span>
+      </div>
+    </div>`;
+}
+
+function viewProperties() {
+  const q = (propSearch||'').toLowerCase().trim();
+  const f = propFilters;
+  let list = state.properties.filter(p => p.kind === propTab);
+
+  // search
+  if (q) list = list.filter(p =>
+    (p.title||'').toLowerCase().includes(q) || (p.complex||'').toLowerCase().includes(q) ||
+    (p.district||'').toLowerCase().includes(q) || (p.developer||'').toLowerCase().includes(q)
+  );
+  // фильтры
+  if (f.priceMin) list = list.filter(p => (p.price||0) >= f.priceMin);
+  if (f.priceMax) list = list.filter(p => (p.price||0) <= f.priceMax);
+  if (f.district) list = list.filter(p => p.district === f.district);
+  if (f.bedrooms !== '') list = list.filter(p => {
+    const b = p.bedrooms != null ? p.bedrooms : parseBedrooms(p.rooms);
+    return f.bedrooms === '5+' ? b >= 5 : b === +f.bedrooms;
+  });
+  if (f.reno === 'yes') list = list.filter(p => p.reno && p.reno !== 'no');
+  else if (f.reno === 'no') list = list.filter(p => !p.reno || p.reno === 'no');
+
+  // sort
+  if (propSort === 'price-asc') list.sort((a,b) => (a.price||0) - (b.price||0));
+  else if (propSort === 'price-desc') list.sort((a,b) => (b.price||0) - (a.price||0));
+  else if (propSort === 'name') list.sort((a,b) => (a.complex||'').localeCompare(b.complex||''));
+
+  const sortLabel = { 'price-asc':'Цена ↑', 'price-desc':'Цена ↓', 'name':'По ЖК' }[propSort];
+  const districts = [...new Set(state.properties.map(p => p.district).filter(Boolean))].sort();
+  const activeFilterCount = (f.priceMin?1:0) + (f.priceMax?1:0) + (f.district?1:0) + (f.bedrooms!==''?1:0) + (f.reno?1:0);
+
+  let body = '';
+  if (!list.length) {
+    body = `<div class="empty"><div class="ico">▦</div><p>Ничего не найдено</p></div>`;
+  } else if (propView === 'group') {
+    const groups = {};
+    list.forEach(p => { const k = p.complex || '— Без ЖК'; (groups[k] = groups[k] || []).push(p); });
+    body = Object.keys(groups).sort().map(complex => {
+      const items = groups[complex];
+      const minPrice = Math.min(...items.map(i => i.price||0));
+      return `
+        <div class="section-h" style="display:flex; justify-content: space-between; align-items: center;">
+          <span>${complex} · ${items.length}</span>
+          <span style="color:var(--accent); text-transform:none; letter-spacing:0;">от ${fmtMoneyShort(minPrice)}</span>
+        </div>
+        ${items.map(p => propRowCard(p)).join('')}
+      `;
+    }).join('');
+  } else if (propView === 'table') {
+    body = `<div class="tbl-wrap"><table class="crm">
+      <thead><tr><th>ЖК</th><th>№</th><th>Спал.</th><th>Площадь</th><th>Ремонт</th><th>Район</th><th>Цена</th></tr></thead>
+      <tbody>
+        ${list.map(p => `
+          <tr onclick="openProperty('${p.id}')" style="cursor:pointer;">
+            <td><span style="font-weight:500;">${p.complex||'—'}</span></td>
+            <td>${p.title||''}</td>
+            <td>${p.bedrooms!=null?bedroomsLabel(p.bedrooms):(p.rooms||'')}</td>
+            <td>${p.area||''}</td>
+            <td>${p.reno?({cosmetic:'Косм.',euro:'Евро',design:'Дизайн.'})[p.reno]:'—'}</td>
+            <td>${p.district||''}</td>
+            <td style="color:var(--accent); font-weight:600;">${fmtMoneyShort(p.price)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  } else {
+    body = `<div class="gallery">${list.map(p => propGridCard(p)).join('')}</div>`;
+  }
+
+  return `
+    <div class="tabs">
+      <button class="tab ${propTab==='new'?'active':''}" onclick="setPropTab('new')">Новостройки</button>
+      <button class="tab ${propTab==='flat'?'active':''}" onclick="setPropTab('flat')">Квартиры</button>
+      <button class="tab ${propTab==='house'?'active':''}" onclick="setPropTab('house')">Дома</button>
+      <button class="tab ${propTab==='th'?'active':''}" onclick="setPropTab('th')">Таунхаусы</button>
+    </div>
+    <input class="search" placeholder="Поиск ЖК, района, застройщика…" value="${propSearch}" oninput="propSearch=this.value; render()" />
+    <div style="display:flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
+      <button class="tab ${propFiltersOpen||activeFilterCount?'active':''}" onclick="propFiltersOpen=!propFiltersOpen; render()">
+        Фильтры${activeFilterCount?` · ${activeFilterCount}`:''}
+      </button>
+      <button class="tab" onclick="cyclePropSort()">Сорт.: ${sortLabel}</button>
+    </div>
+    <div style="display:flex; gap: 4px; margin-bottom: 12px;">
+      <button class="tab ${propView==='grid'?'active':''}" onclick="propView='grid'; render()">▦ Плитки</button>
+      <button class="tab ${propView==='group'?'active':''}" onclick="propView='group'; render()">≡ По ЖК</button>
+      <button class="tab ${propView==='table'?'active':''}" onclick="propView='table'; render()">⊞ Таблица</button>
+    </div>
+
+    ${propFiltersOpen ? `
+    <div class="filter-panel">
+      <div class="fp-row">
+        <span class="fp-lbl">Цена, млн</span>
+        <input class="fp-input" type="number" placeholder="от" value="${f.priceMin?f.priceMin/1000000:''}" onchange="propFilters.priceMin = this.value ? +this.value*1000000 : null; render()">
+        <input class="fp-input" type="number" placeholder="до" value="${f.priceMax?f.priceMax/1000000:''}" onchange="propFilters.priceMax = this.value ? +this.value*1000000 : null; render()">
+      </div>
+      <div class="fp-row">
+        <span class="fp-lbl">Тип</span>
+        <select class="fp-input" onchange="propFilters.bedrooms = this.value; render()">
+          <option value="" ${f.bedrooms===''?'selected':''}>Любой</option>
+          <option value="0" ${f.bedrooms==='0'?'selected':''}>Студия</option>
+          <option value="1" ${f.bedrooms==='1'?'selected':''}>1-комн</option>
+          <option value="2" ${f.bedrooms==='2'?'selected':''}>2-комн</option>
+          <option value="3" ${f.bedrooms==='3'?'selected':''}>3-комн</option>
+          <option value="4" ${f.bedrooms==='4'?'selected':''}>4-комн</option>
+          <option value="5+" ${f.bedrooms==='5+'?'selected':''}>5+</option>
+        </select>
+      </div>
+      <div class="fp-row">
+        <span class="fp-lbl">Район</span>
+        <select class="fp-input" onchange="propFilters.district = this.value; render()">
+          <option value="">— любой —</option>
+          ${districts.map(d => `<option value="${d}" ${f.district===d?'selected':''}>${d}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fp-row">
+        <span class="fp-lbl">Ремонт</span>
+        <select class="fp-input" onchange="propFilters.reno = this.value; render()">
+          <option value="" ${f.reno===''?'selected':''}>Не важно</option>
+          <option value="yes" ${f.reno==='yes'?'selected':''}>С ремонтом</option>
+          <option value="no" ${f.reno==='no'?'selected':''}>Без ремонта</option>
+        </select>
+      </div>
+      <button class="fp-reset" onclick="resetFilters()">Сбросить</button>
+    </div>` : ''}
+
+    <p class="meta" style="margin: 8px 0 12px;">Найдено: ${list.length}</p>
+    ${body}
+  `;
+}
+function resetFilters() {
+  propFilters = { priceMin: null, priceMax: null, district: '', bedrooms: '', reno: '' };
+  render();
+}
+function propGridCard(p) {
+  const bg = p.photo ? `background-image: url('${p.photo}'); background-size: cover; background-position: center;` : '';
+  return `
+    <div class="prop-card" onclick="openProperty('${p.id}')">
+      <div class="prop-img" style="${bg}">${p.photo?'':'▦'}</div>
+      <div class="body">
+        <h4>${p.complex || '—'}</h4>
+        <div class="meta" style="font-size:10px;">${p.title}</div>
+        <div class="price">${fmtMoneyShort(p.price)}</div>
+        <div class="meta">${p.rooms} · ${p.area} · ${p.district}</div>
+        ${p.commission?`<div class="meta" style="color:var(--success); margin-top: 2px;">★ ${p.commission}</div>`:''}
+      </div>
+    </div>`;
+}
+function propRowCard(p) {
+  const bg = p.photo ? `background-image: url('${p.photo}'); background-size: cover; background-position: center;` : '';
+  return `
+    <div class="card" onclick="openProperty('${p.id}')" style="display:flex; gap: 12px; align-items:center; padding: 10px 12px;">
+      <div style="width: 60px; height: 60px; border-radius: 10px; background-color: var(--surface-2); ${bg} display:flex; align-items:center; justify-content:center; color:var(--text-muted); flex-shrink:0;">${p.photo?'':'▦'}</div>
+      <div style="flex:1; min-width: 0;">
+        <h3>${p.title}</h3>
+        <p class="meta">${p.rooms} · ${p.area} · ${p.district}</p>
+        ${p.commission?`<p class="meta" style="color:var(--success); margin-top:2px;">★ ${p.commission}</p>`:''}
+      </div>
+      <div style="color:var(--accent); font-weight:600; text-align:right;">${fmtMoneyShort(p.price)}</div>
+    </div>`;
+}
+function setPropTab(t) { propTab = t; render(); }
+function cyclePropSort() {
+  const order = ['price-asc','price-desc','name'];
+  propSort = order[(order.indexOf(propSort)+1) % order.length];
+  render();
+}
+
+function viewClients() {
+  const f = clientFilters;
+  const q = (clientSearch||'').toLowerCase().trim();
+  let list = state.clients.slice();
+  if (q) list = list.filter(c =>
+    (c.name||'').toLowerCase().includes(q) ||
+    (c.phone||'').includes(q) ||
+    (c.requestComment||'').toLowerCase().includes(q)
+  );
+  if (f.status) list = list.filter(c => c.status === f.status);
+  if (f.budgetMin) list = list.filter(c => (c.budgetMln||0) >= f.budgetMin);
+  if (f.budgetMax) list = list.filter(c => (c.budgetMln||999) <= f.budgetMax);
+  if (f.nextRange) {
+    const now = new Date(); now.setHours(0,0,0,0);
+    const endOfDay = new Date(now); endOfDay.setHours(23,59,59,999);
+    const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate()+7);
+    list = list.filter(c => {
+      if (!c.nextContact) return f.nextRange === 'none';
+      const d = new Date(c.nextContact);
+      if (f.nextRange === 'overdue') return d < now;
+      if (f.nextRange === 'today') return d >= now && d <= endOfDay;
+      if (f.nextRange === 'week') return d >= now && d <= weekEnd;
+      if (f.nextRange === 'has') return true;
+      return true;
+    });
+  }
+  const activeFilters = (f.status?1:0) + (f.budgetMin?1:0) + (f.budgetMax?1:0) + (f.nextRange?1:0);
+
+  return `
+    <input class="search" placeholder="Поиск клиента, телефона, запроса…" value="${clientSearch}" oninput="clientSearch=this.value; render()" />
+    <div style="display:flex; gap:6px; margin-bottom: 10px; flex-wrap: wrap;">
+      <button class="tab ${clientFiltersOpen||activeFilters?'active':''}" onclick="clientFiltersOpen=!clientFiltersOpen; render()">Фильтры${activeFilters?` · ${activeFilters}`:''}</button>
+    </div>
+    ${clientFiltersOpen ? `
+      <div class="filter-panel">
+        <div class="fp-row">
+          <span class="fp-lbl">Статус</span>
+          <select class="fp-input" onchange="clientFilters.status = this.value; render()">
+            <option value="">Все</option>
+            ${STATUSES.filter(s=>s!=='archive').map(s =>
+              `<option value="${s}" ${f.status===s?'selected':''}>${statusLabel(s)}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div class="fp-row">
+          <span class="fp-lbl">Бюджет, млн</span>
+          <input class="fp-input" type="number" placeholder="от" value="${f.budgetMin||''}" onchange="clientFilters.budgetMin = this.value ? +this.value : null; render()">
+          <input class="fp-input" type="number" placeholder="до" value="${f.budgetMax||''}" onchange="clientFilters.budgetMax = this.value ? +this.value : null; render()">
+        </div>
+        <div class="fp-row">
+          <span class="fp-lbl">Контакт</span>
+          <select class="fp-input" onchange="clientFilters.nextRange = this.value; render()">
+            <option value="">Все</option>
+            <option value="overdue" ${f.nextRange==='overdue'?'selected':''}>Просрочен</option>
+            <option value="today" ${f.nextRange==='today'?'selected':''}>Сегодня</option>
+            <option value="week" ${f.nextRange==='week'?'selected':''}>Неделя</option>
+            <option value="has" ${f.nextRange==='has'?'selected':''}>Назначен</option>
+            <option value="none" ${f.nextRange==='none'?'selected':''}>Не назначен</option>
+          </select>
+        </div>
+        <button class="fp-reset" onclick="resetClientFilters()">Сбросить</button>
+      </div>
+    ` : ''}
+    <p class="meta" style="margin: 6px 0 10px;">Найдено: ${list.length}</p>
+    <div class="tbl-wrap">
+      <table class="crm">${renderClientRows(list)}</table>
+    </div>
+  `;
+}
+function resetClientFilters() {
+  clientFilters = { status: '', budgetMin: null, budgetMax: null, nextRange: '' };
+  render();
+}
+function renderClientRows(list) {
+  return `
+    <thead><tr>
+      <th>Клиент</th><th>Статус</th><th>Запрос</th><th>Бюджет</th><th>Тел.</th><th>Ответственный</th><th>Контакт</th><th>Действие</th>
+    </tr></thead>
+    <tbody>
+      ${list.length === 0 ? `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:30px;">Нет клиентов</td></tr>` :
+        list.map(c => `
+          <tr onclick="openClient('${c.id}')" style="cursor:pointer; border-left: 3px solid ${statusStripe(c.status)};">
+            <td><span class="avatar" style="width:24px; height:24px; font-size:10px; display:inline-flex; vertical-align:middle; margin-right:6px;">${initials(c.name)}</span>${c.name}</td>
+            <td><span class="pill ${statusClass(c.status)}">${statusLabel(c.status)}</span></td>
+            <td style="max-width: 200px; white-space: normal; font-size: 11px; color: var(--text-muted);">${(c.requestComment||'').slice(0,80)}</td>
+            <td>${c.budget||''}</td>
+            <td>${c.phone||''}</td>
+            <td>${c.responsible||''}</td>
+            <td>${c.nextContact ? fmtDateTime(c.nextContact) : '—'}</td>
+            <td>${c.nextAction ? `<span style="color:var(--accent);">${c.nextAction}</span>` : ''}</td>
+          </tr>`).join('')}
+    </tbody>`;
+}
+
+function viewCRM() {
+  // Сделки и Партнерка доступны только с Главной (через KPI-плитки)
+  // — внутри Задач остаются только Задачи + Календарь
+  if (crmTab === 'deals') return crmDeals();
+  if (crmTab === 'partner') return crmPartner();
+  const tabs = [
+    { k:'tasks', l:'Задачи' },
+    { k:'calendar', l:'Календарь' },
+  ];
+  return `
+    <div class="tabs">
+      ${tabs.map(t => `<button class="tab ${crmTab===t.k?'active':''}" onclick="setCrmTab('${t.k}')">${t.l}</button>`).join('')}
+    </div>
+    ${crmTab==='tasks' ? crmTasks() : crmCalendar()}
+  `;
+}
+function setCrmTab(t) { crmTab = t; render(); }
+
+function crmClients() {
+  const groups = ['new','show','deal','done'];
+  return groups.map(g => {
+    const list = state.clients.filter(c => c.status === g);
+    if (!list.length) return '';
+    return `<div class="section-h">${statusLabel(g)} · ${list.length}</div>` +
+      list.map(c => `
+        <div class="card" onclick="openClient('${c.id}')">
+          <div class="card-row">
+            <div>
+              <h3>${c.name}</h3>
+              <p class="meta">${c.type||''} · ${c.budget||''}</p>
+            </div>
+            <span class="pill ${statusClass(c.status)}">${statusLabel(c.status)}</span>
+          </div>
+          ${c.nextContact ? `<p class="meta" style="margin-top:6px;">След.: ${fmtDateTime(c.nextContact)}</p>` : ''}
+        </div>`).join('');
+  }).join('') || `<div class="empty"><div class="ico">☺</div><p>Нет клиентов. Нажмите +, чтобы добавить.</p></div>`;
+}
+
+function crmByKind(kind, emptyText) {
+  const list = state.properties.filter(p => p.kind === kind);
+  if (!list.length) return `<div class="empty"><div class="ico">▦</div><p>${emptyText}</p></div>`;
+  return list.map(p => `
+    <div class="card" onclick="openProperty('${p.id}')">
+      <div class="card-row">
+        <div>
+          <h3>${p.title}</h3>
+          <p class="meta">${p.rooms} · ${p.area} · ${p.district}</p>
+        </div>
+        <div style="color:var(--accent); font-weight:600; font-size:14px;">${fmtMoneyShort(p.price)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function crmPartner() {
+  const refTotal = state.referrals.reduce((s,r)=>s+r.amount, 0);
+  return `
+    ${crmBackLink()}
+    <div class="balance-card">
+      <div class="label">Баланс рефералки</div>
+      <div class="value">${fmtMoney(refTotal)}</div>
+      <div class="sub">${state.referrals.length} начислений · t.me/catalog_sochi_bot?ref=${state.user.refCode}</div>
+    </div>
+    <button class="btn ghost" onclick="copyRef()" style="margin-bottom: 14px;">Скопировать реф. ссылку</button>
+
+    <div class="section-h">Партнерские сделки</div>
+    ${!state.partnerDeals.length ? `<div class="card"><p class="meta" style="margin:0;">Партнерских сделок пока нет</p></div>` :
+      state.partnerDeals.map(d => `
+      <div class="card">
+        <div class="card-row">
+          <div>
+            <h3>${d.object}</h3>
+            <p class="meta">Партнер: ${d.partner}</p>
+          </div>
+          <span class="pill ${d.status==='paid'?'s-deal':'s-show'}">${d.status==='paid'?'Выплачено':'Ожидание'}</span>
+        </div>
+        <div style="display:flex; justify-content: space-between; margin-top:10px; padding-top:10px; border-top: 0.5px solid var(--border);">
+          <div><div style="font-size:11px; color:var(--text-muted);">Сумма</div><div style="font-weight:600;">${fmtMoneyShort(d.sum)}</div></div>
+          <div><div style="font-size:11px; color:var(--text-muted);">Моя доля (${d.mySharePct}%)</div><div style="color:var(--success); font-weight:600;">${fmtMoneyShort(d.commission * d.mySharePct/100)}</div></div>
+        </div>
+      </div>`).join('')}
+
+    <div class="section-h">Начисления по рефералке</div>
+    ${state.referrals.map(r => `
+      <div class="list-item">
+        <div class="avatar">${initials(r.name)}</div>
+        <div style="flex:1;">
+          <div style="font-size:14px;">${r.name}</div>
+          <div style="font-size:11px; color:var(--text-muted);">${fmtDate(r.when)}</div>
+        </div>
+        <div style="color:var(--success); font-weight:600;">+${fmtMoney(r.amount)}</div>
+      </div>`).join('')}
+  `;
+}
+
+function crmBackLink() {
+  return `<button class="tab" onclick="goCrm('tasks')" style="margin-bottom: 12px;">‹ К задачам</button>`;
+}
+
+function crmDeals() {
+  const backLink = crmBackLink();
+  const list = state.deals.slice().sort((a,b)=> new Date(b.date) - new Date(a.date));
+  const totals = list.reduce((acc, d) => {
+    const itog = (d.commission||0) - (d.expenses||0);
+    const left = itog - (d.received||0);
+    acc.commission += d.commission||0;
+    acc.expenses += d.expenses||0;
+    acc.itog += itog;
+    acc.received += d.received||0;
+    acc.left += left;
+    return acc;
+  }, { commission:0, expenses:0, itog:0, received:0, left:0 });
+
+  return `
+    ${backLink}
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">Комиссии всего</div><div class="value">${fmtMoneyShort(totals.commission)}</div></div>
+      <div class="kpi"><div class="label">Получено</div><div class="value" style="color:var(--success);">${fmtMoneyShort(totals.received)}</div></div>
+      <div class="kpi"><div class="label">Расходы</div><div class="value">${fmtMoneyShort(totals.expenses)}</div></div>
+      <div class="kpi"><div class="label">Осталось</div><div class="value" style="color:var(--accent);">${fmtMoneyShort(totals.left)}</div></div>
+    </div>
+
+    ${!list.length ? `<div class="empty"><div class="ico">⚐</div><p>Сделок ещё нет</p></div>` :
+    `<div class="tbl-wrap">
+      <table class="crm">
+        <thead><tr>
+          <th>Объект</th><th>Дата</th><th>Цена</th><th>Комис.</th><th>Расх.</th><th>Итого</th><th>Получ.</th><th>Осталось</th>
+        </tr></thead>
+        <tbody>
+          ${list.map(d => {
+            const itog = (d.commission||0) - (d.expenses||0);
+            const left = itog - (d.received||0);
+            return `<tr onclick="openDeal('${d.id}')" style="cursor:pointer;">
+              <td><div style="font-weight:500;">${d.object}</div><div style="font-size:10px; color:var(--text-muted);">${d.client||''}</div></td>
+              <td>${fmtDate(d.date)}</td>
+              <td>${fmtMoneyShort(d.price)}</td>
+              <td>${fmtMoneyShort(d.commission)}</td>
+              <td>${fmtMoneyShort(d.expenses||0)}</td>
+              <td style="font-weight:500;">${fmtMoneyShort(itog)}</td>
+              <td style="color:var(--success);">${fmtMoneyShort(d.received||0)}</td>
+              <td style="color:${left>0?'var(--accent)':'var(--text-muted)'}; font-weight:500;">${fmtMoneyShort(left)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`}
+  `;
+}
+
+function crmCalendar() {
+  const y = calDate.getFullYear(), m = calDate.getMonth();
+  const firstDay = new Date(y, m, 1);
+  const lastDay = new Date(y, m+1, 0);
+  const startWeekday = (firstDay.getDay() + 6) % 7;
+  const monthName = calDate.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  const today = new Date();
+
+  let cells = [];
+  for (let i=0; i<startWeekday; i++) {
+    const d = new Date(y, m, -startWeekday+i+1);
+    cells.push({ d, muted: true });
+  }
+  for (let i=1; i<=lastDay.getDate(); i++) cells.push({ d: new Date(y, m, i), muted: false });
+  while (cells.length % 7 !== 0) {
+    const last = cells[cells.length-1].d;
+    cells.push({ d: new Date(last.getFullYear(), last.getMonth(), last.getDate()+1), muted: true });
+  }
+
+  const eventsForDay = (d) => state.tasks.filter(t => isSameDay(new Date(t.when), d));
+  const sel = selectedDay ? new Date(selectedDay) : today;
+  const dayTasks = eventsForDay(sel).sort((a,b)=>new Date(a.when)-new Date(b.when));
+
+  return `
+    <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <button class="icon-btn" onclick="calMove(-1)">‹</button>
+      <div style="font-weight:500; text-transform: capitalize;">${monthName}</div>
+      <button class="icon-btn" onclick="calMove(1)">›</button>
+    </div>
+    <div class="cal-head">${['пн','вт','ср','чт','пт','сб','вс'].map(d=>`<div>${d}</div>`).join('')}</div>
+    <div class="cal-grid">
+      ${cells.map(c => {
+        const isToday = isSameDay(c.d, today);
+        const isSelected = selectedDay && isSameDay(c.d, new Date(selectedDay));
+        const hasEv = eventsForDay(c.d).length > 0;
+        return `<div class="cal-day ${c.muted?'muted':''} ${isToday?'today':''} ${isSelected&&!isToday?'selected':''} ${hasEv?'has-event':''}" onclick="selectDay('${c.d.toISOString()}')">${c.d.getDate()}</div>`;
+      }).join('')}
+    </div>
+    <div class="section-h">${sel.toLocaleDateString('ru-RU', {day:'numeric', month:'long'})} · ${dayTasks.length} событий</div>
+    ${dayTasks.length === 0 ? `<div class="empty"><p>Событий нет</p></div>` :
+      dayTasks.map(t => `
+        <div class="card" onclick="openTask('${t.id}')">
+          <div class="card-row">
+            <div>
+              <h3>${t.title}</h3>
+              <p class="meta">${fmtTime(t.when)}</p>
+            </div>
+          </div>
+        </div>`).join('')}
+  `;
+}
+function calMove(delta) {
+  calDate.setMonth(calDate.getMonth() + delta);
+  render();
+}
+function selectDay(iso) { selectedDay = iso; render(); }
+
+function crmTasks() {
+  const all = state.tasks.slice().sort((a,b) => new Date(a.when) - new Date(b.when));
+  let list = all;
+  if (taskFilter === 'today') list = all.filter(t => isSameDay(new Date(t.when), new Date()));
+  else if (taskFilter === 'week') {
+    const wkEnd = new Date(); wkEnd.setDate(wkEnd.getDate()+7);
+    list = all.filter(t => new Date(t.when) <= wkEnd);
+  }
+  const overdue = list.filter(t => !t.done && isOverdue(t.when));
+  const today = list.filter(t => !t.done && !isOverdue(t.when) && isSameDay(new Date(t.when), new Date()));
+  const upcoming = list.filter(t => !t.done && !isOverdue(t.when) && !isSameDay(new Date(t.when), new Date()));
+  const done = list.filter(t => t.done);
+
+  const renderGroup = (title, arr, hClass) => arr.length ? `
+    <div class="section-h" ${hClass||''}>${title}</div>
+    ${arr.map(t => `
+      <div class="list-item">
+        <div class="check ${t.done?'done':''}" onclick="event.stopPropagation(); toggleTask('${t.id}')">${t.done?'✓':''}</div>
+        <div style="flex:1; cursor:pointer;" onclick="openTask('${t.id}')">
+          <div class="task-text ${t.done?'done':''}" style="font-size: 14px;">${t.title}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${fmtDateTime(t.when)}</div>
+        </div>
+      </div>`).join('')}
+  ` : '';
+
+  return `
+    <div style="display:flex; gap:6px; overflow-x:auto; margin-bottom: 8px;">
+      <button class="tab ${taskFilter==='all'?'active':''}" onclick="setTaskFilter('all')">Все</button>
+      <button class="tab ${taskFilter==='today'?'active':''}" onclick="setTaskFilter('today')">Сегодня</button>
+      <button class="tab ${taskFilter==='week'?'active':''}" onclick="setTaskFilter('week')">Неделя</button>
+    </div>
+    ${list.length === 0 ? `<div class="empty"><div class="ico">✓</div><p>Задач нет</p></div>` : ''}
+    ${renderGroup('Просрочено', overdue, 'style="color:var(--danger);"')}
+    ${renderGroup('Сегодня', today)}
+    ${renderGroup('Предстоящие', upcoming)}
+    ${renderGroup('Выполнено', done)}
+  `;
+}
+function setTaskFilter(f) { taskFilter = f; render(); }
+function toggleTask(taskId) {
+  const t = state.tasks.find(t => t.id === taskId);
+  if (t) { t.done = !t.done; saveState(state); render(); }
+}
+
+function viewProfile() {
+  const refTotal = state.referrals.reduce((s,r)=>s+r.amount, 0);
+  return `
+    <div class="card" style="display:flex; align-items:center; gap: 12px;">
+      <div class="avatar acc" style="width: 56px; height: 56px; font-size: 18px;">${initials(state.user.name)}</div>
+      <div>
+        <h3 style="font-size:17px;">${state.user.name}</h3>
+        <p class="meta">${state.user.role} · ${state.user.city}</p>
+      </div>
+    </div>
+
+    <div class="section-h">Подписка</div>
+    <div class="card">
+      <div class="card-row">
+        <div>
+          <h3>Тариф «Агент»</h3>
+          <p class="meta">500 ₽ / месяц</p>
+        </div>
+        <span class="pill s-new">Активна</span>
+      </div>
+      <button class="btn ghost" style="margin-top:10px;" onclick="alert('ЮKassa: подключение в работе')">Управлять подпиской</button>
+    </div>
+
+    <div class="section-h">Рефералы</div>
+    <div class="card">
+      <div class="card-row">
+        <div><h3>Баланс</h3><p class="meta">${state.referrals.length} начислений</p></div>
+        <div style="color:var(--accent); font-weight:600; font-size:18px;">${fmtMoney(refTotal)}</div>
+      </div>
+      <button class="btn ghost" style="margin-top:10px;" onclick="go('crm'); setCrmTab('referrals')">Открыть рефералку →</button>
+    </div>
+
+    <div class="section-h">Настройки</div>
+    <div class="card" style="padding: 0 14px;">
+      <div class="profile-row" onclick="editProfile()">
+        <span class="label">Имя и контакты</span><span class="val">${state.user.name}</span>
+      </div>
+      <div class="profile-row">
+        <span class="label">Тема</span>
+        <div class="toggle">
+          <button class="${state.theme==='dark'?'on':''}" onclick="event.stopPropagation(); setTheme('dark')">Тёмная</button>
+          <button class="${state.theme==='light'?'on':''}" onclick="event.stopPropagation(); setTheme('light')">Светлая</button>
+        </div>
+      </div>
+      <div class="profile-row" onclick="exportData()">
+        <span class="label">Экспорт данных</span><span class="val">JSON</span>
+      </div>
+      <div class="profile-row" onclick="if(confirm('Удалить все данные приложения?')){localStorage.removeItem(LS_KEY); state=loadState(); render();}">
+        <span class="label" style="color:var(--danger);">Сбросить приложение</span><span class="val">⟲</span>
+      </div>
+    </div>
+    <p class="meta" style="text-align:center; margin: 20px 0; font-size: 11px;">каталог-сочи.рф · MVP v0.1</p>
+  `;
+}
+
+/* ============================== MODALS ============================== */
+function openModal(html) {
+  const bg = document.getElementById('modalBg');
+  document.getElementById('modal').innerHTML = `<div class="grab"></div>${html}`;
+  bg.classList.add('open');
+}
+function closeModal() { document.getElementById('modalBg').classList.remove('open'); }
+
+function openClient(cid) {
+  const c = state.clients.find(x => x.id === cid);
+  if (!c) return;
+  openModal(`
+    <h2>${c.name}</h2>
+    <div class="field"><label>Статус / тип</label>
+      <select onchange="updClient('${c.id}','status',this.value)">
+        ${STATUSES.map(s=>`<option value="${s}" ${c.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Ответственный</label>
+      <select onchange="updClient('${c.id}','responsible',this.value)">
+        ${(state.agents||[]).map(a=>`<option value="${a}" ${c.responsible===a?'selected':''}>${a}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Имя</label><input value="${c.name||''}" onchange="updClient('${c.id}','name',this.value)"></div>
+    <div class="field"><label>Телефон</label><input value="${c.phone||''}" type="tel" onchange="updClient('${c.id}','phone',this.value)"></div>
+    <div class="field"><label>Комментарий по запросу</label><textarea onchange="updClient('${c.id}','requestComment',this.value)" placeholder="Что ищет: тип, бюджет, район, особенности…">${c.requestComment||''}</textarea></div>
+    <div class="field"><label>Тип жилья</label><input value="${c.type||''}" onchange="updClient('${c.id}','type',this.value)" placeholder="2-комн, студия…"></div>
+    <div class="field"><label>Бюджет (текст)</label><input value="${c.budget||''}" onchange="updClient('${c.id}','budget',this.value)" placeholder="до 15 млн"></div>
+    <div class="field"><label>Бюджет (млн, для фильтра)</label><input type="number" value="${c.budgetMln||''}" onchange="updClient('${c.id}','budgetMln',+this.value||null)" placeholder="15"></div>
+    <div class="field"><label>Район/Локация</label><input value="${c.area||''}" onchange="updClient('${c.id}','area',this.value)"></div>
+    <div class="field"><label>Следующий контакт</label><input value="${c.nextContact ? c.nextContact.slice(0,16) : ''}" type="datetime-local" onchange="updClient('${c.id}','nextContact',new Date(this.value).toISOString())"></div>
+    <div class="field"><label>Действие</label>
+      <select onchange="updClient('${c.id}','nextAction',this.value)">
+        <option value="">— выберите —</option>
+        ${['Позвонить','Показ','Отправить подборку','Встреча','Подписать договор','Напомнить','Отправить документы'].map(a=>`<option ${c.nextAction===a?'selected':''}>${a}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Комментарии</label><textarea onchange="updClient('${c.id}','note',this.value)">${c.note||''}</textarea></div>
+    <div class="btn-row">
+      <a class="btn" href="tel:${c.phone}" style="text-decoration:none; text-align:center;">Позвонить</a>
+      <button class="btn ghost" onclick="closeModal()">Готово</button>
+    </div>
+    <button class="btn danger" style="margin-top:8px;" onclick="delClient('${c.id}')">Удалить клиента</button>
+  `);
+}
+function updClient(cid, field, val) {
+  const c = state.clients.find(x => x.id === cid);
+  if (!c) return;
+  c[field] = val;
+  saveState(state);
+  if (['name','status','phone','type','budget','nextContact'].includes(field)) render();
+}
+function delClient(cid) {
+  if (!confirm('Удалить клиента?')) return;
+  state.clients = state.clients.filter(c => c.id !== cid);
+  saveState(state); closeModal(); render();
+}
+
+function openProperty(pid) {
+  const p = state.properties.find(x => x.id === pid);
+  if (!p) return;
+  openModal(`
+    <h2>${p.complex || p.title}</h2>
+    <div style="position:relative; margin-bottom: 14px;">
+      <div class="prop-img" style="height: 180px; border-radius: 14px; background-image: ${p.photo?`url('${p.photo}')`:'none'}; background-size: cover; background-position: center;">${p.photo?'':'▦'}</div>
+      <label class="btn ghost" style="position:absolute; bottom: 8px; right: 8px; width:auto; padding: 6px 12px; font-size:12px; margin:0; cursor:pointer;">
+        ${p.photo?'Заменить':'Добавить фото'}
+        <input type="file" accept="image/*" style="display:none" onchange="uploadPropPhoto('${p.id}', this)">
+      </label>
+      ${p.photo?`<button class="btn danger" style="position:absolute; bottom: 8px; left: 8px; width:auto; padding: 6px 12px; font-size:12px;" onclick="updProp('${p.id}','photo','')">Удалить</button>`:''}
+    </div>
+    <div class="btn-row" style="margin-bottom: 14px;">
+      <button class="btn" onclick="shareProperty('${p.id}')">Поделиться</button>
+      <button class="btn ghost" onclick="printProperty('${p.id}')">PDF</button>
+    </div>
+    <div class="field"><label>ЖК / Комплекс (обязательно)</label><input value="${p.complex||''}" onchange="updProp('${p.id}','complex',this.value)" placeholder="ЖК Морская симфония"></div>
+    <div class="field"><label>Название/№ объекта</label><input value="${p.title||''}" onchange="updProp('${p.id}','title',this.value)" placeholder="кв.142"></div>
+    <div class="field"><label>Тип</label>
+      <select onchange="updProp('${p.id}','kind',this.value)">
+        <option value="new" ${p.kind==='new'?'selected':''}>Новостройка</option>
+        <option value="flat" ${p.kind==='flat'?'selected':''}>Квартира</option>
+        <option value="house" ${p.kind==='house'?'selected':''}>Дом / коттедж</option>
+        <option value="th" ${p.kind==='th'?'selected':''}>Таунхаус</option>
+      </select>
+    </div>
+    <div class="field"><label>Комнат (текстом)</label><input value="${p.rooms||''}" onchange="updProp('${p.id}','rooms',this.value); updProp('${p.id}','bedrooms',parseBedrooms(this.value))" placeholder="2-комн, Студия"></div>
+    <div class="field"><label>Спален (для фильтров)</label>
+      <select onchange="updProp('${p.id}','bedrooms', this.value===''?null:+this.value)">
+        <option value="" ${p.bedrooms==null?'selected':''}>— не задано —</option>
+        ${[0,1,2,3,4,5].map(n => `<option value="${n}" ${p.bedrooms===n?'selected':''}>${bedroomsLabel(n)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Ремонт</label>
+      <select onchange="updProp('${p.id}','reno',this.value)">
+        <option value="" ${!p.reno?'selected':''}>Без ремонта</option>
+        <option value="cosmetic" ${p.reno==='cosmetic'?'selected':''}>Косметический</option>
+        <option value="euro" ${p.reno==='euro'?'selected':''}>Евроремонт</option>
+        <option value="design" ${p.reno==='design'?'selected':''}>Дизайнерский</option>
+      </select>
+    </div>
+    <div class="field"><label>Площадь</label><input value="${p.area||''}" onchange="updProp('${p.id}','area',this.value)"></div>
+    <div class="field"><label>Цена (₽)</label><input value="${p.price||0}" type="number" onchange="updProp('${p.id}','price',+this.value)"></div>
+    <div class="field"><label>Комиссия (₽ или %)</label><input value="${p.commission||''}" onchange="updProp('${p.id}','commission',this.value)" placeholder="напр. 3% или 372 000"></div>
+    <div class="field"><label>Район</label><input value="${p.district||''}" onchange="updProp('${p.id}','district',this.value)"></div>
+    <div class="field"><label>Застройщик</label><input value="${p.developer||''}" onchange="updProp('${p.id}','developer',this.value)"></div>
+    <div class="field"><label>Описание</label><textarea onchange="updProp('${p.id}','note',this.value)">${p.note||''}</textarea></div>
+    <button class="btn" onclick="closeModal()">Готово</button>
+    <button class="btn danger" style="margin-top:8px;" onclick="delProp('${p.id}')">Удалить объект</button>
+  `);
+}
+
+function uploadPropPhoto(pid, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { alert('Фото слишком большое (максимум 3 МБ)'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    // Сжимаем через canvas чтобы не раздувать localStorage
+    const img = new Image();
+    img.onload = () => {
+      const max = 800;
+      const ratio = Math.min(max / img.width, max / img.height, 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * ratio;
+      canvas.height = img.height * ratio;
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      updProp(pid, 'photo', canvas.toDataURL('image/jpeg', 0.8));
+      openProperty(pid);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function shareProperty(pid) {
+  const p = state.properties.find(x => x.id === pid);
+  if (!p) return;
+  const text = `${p.complex || ''} · ${p.title || ''}\n${p.rooms||''} · ${p.area||''} · ${p.district||''}\nЦена: ${fmtMoney(p.price)}\n${p.note||''}\n\nКонтакт агента: ${state.user.name} ${state.user.phone||''}`;
+  if (navigator.share) {
+    navigator.share({ title: p.complex || p.title, text }).catch(()=>{});
+  } else {
+    navigator.clipboard?.writeText(text).then(()=>alert('Текст скопирован — отправьте в мессенджер'));
+  }
+}
+
+function printProperty(pid) {
+  const p = state.properties.find(x => x.id === pid);
+  if (!p) return;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Разрешите всплывающие окна для PDF'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${p.complex||p.title}</title>
+    <style>
+      body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 700px; margin: 30px auto; padding: 0 24px; color: #1a1a1a; }
+      h1 { font-size: 26px; margin: 0 0 4px; }
+      .sub { color: #666; margin-bottom: 20px; }
+      .photo { width: 100%; height: 360px; background: #f0f0f0 url('${p.photo||''}') center/cover; border-radius: 12px; margin-bottom: 20px; display:flex; align-items:center; justify-content: center; color: #aaa; font-size: 60px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
+      .row { padding: 10px 0; border-bottom: 1px solid #eee; }
+      .row .l { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .3px; }
+      .row .v { font-size: 15px; margin-top: 2px; }
+      .price { color: #B8893D; font-size: 28px; font-weight: 600; margin: 16px 0; }
+      .note { background: #f7f6f3; padding: 14px; border-radius: 10px; font-size: 14px; margin-top: 16px; }
+      .agent { margin-top: 30px; padding-top: 16px; border-top: 2px solid #B8893D; font-size: 13px; }
+      .brand { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 24px; }
+      @media print { body { margin: 0; } .photo { ${p.photo?'':'display:none;'} } }
+    </style>
+    </head><body>
+      <div class="brand">каталог-сочи.рф · ${kindLabel(p.kind)}</div>
+      <h1>${p.complex || p.title}</h1>
+      <div class="sub">${p.title !== p.complex ? p.title + ' · ' : ''}${p.district||''}</div>
+      <div class="photo">${p.photo?'':'Фото объекта'}</div>
+      <div class="price">${fmtMoney(p.price)}</div>
+      <div class="grid">
+        <div class="row"><div class="l">Комнат</div><div class="v">${p.rooms||'—'}</div></div>
+        <div class="row"><div class="l">Площадь</div><div class="v">${p.area||'—'}</div></div>
+        <div class="row"><div class="l">Район</div><div class="v">${p.district||'—'}</div></div>
+        <div class="row"><div class="l">Застройщик</div><div class="v">${p.developer||'—'}</div></div>
+      </div>
+      ${p.note?`<div class="note">${p.note}</div>`:''}
+      <div class="agent">
+        <div style="font-weight:600;">${state.user.name}</div>
+        <div>${state.user.role} · ${state.user.city}</div>
+        <div>${state.user.phone||''}</div>
+      </div>
+      <script>setTimeout(()=>window.print(), 400);<\/script>
+    </body></html>`);
+  w.document.close();
+}
+function updProp(pid, f, v) {
+  const p = state.properties.find(x => x.id === pid);
+  if (!p) return; p[f] = v; saveState(state); render();
+}
+function delProp(pid) {
+  if (!confirm('Удалить объект?')) return;
+  state.properties = state.properties.filter(p => p.id !== pid);
+  saveState(state); closeModal(); render();
+}
+
+function openTask(tid) {
+  const t = state.tasks.find(x => x.id === tid);
+  if (!t) return;
+  openModal(`
+    <h2>Задача</h2>
+    <div class="field"><label>Что сделать</label><input value="${t.title}" onchange="updTask('${t.id}','title',this.value)"></div>
+    <div class="field"><label>Когда</label><input type="datetime-local" value="${t.when ? t.when.slice(0,16) : ''}" onchange="updTask('${t.id}','when', new Date(this.value).toISOString())"></div>
+    <button class="btn" onclick="toggleTask('${t.id}'); closeModal();">${t.done?'Отметить как невыполнено':'Отметить выполненной'}</button>
+    <button class="btn danger" style="margin-top:8px;" onclick="delTask('${t.id}')">Удалить задачу</button>
+  `);
+}
+function updTask(tid, f, v) {
+  const t = state.tasks.find(x => x.id === tid);
+  if (!t) return; t[f] = v; saveState(state); render();
+}
+function delTask(tid) {
+  state.tasks = state.tasks.filter(x => x.id !== tid);
+  saveState(state); closeModal(); render();
+}
+
+function onFab() {
+  if (route === 'crm' && crmTab === 'tasks') return addTask();
+  if (route === 'crm' && crmTab === 'calendar') return addTask();
+  if (route === 'crm' && crmTab === 'deals') return addDeal();
+  if (route === 'crm' && crmTab === 'partner') return addPartner();
+  if (route === 'properties') return addProperty();
+  if (route === 'clients') return addClient();
+}
+function addClient() {
+  openModal(`
+    <h2>Новый клиент</h2>
+    <div class="field"><label>Имя</label><input id="nc-name" placeholder="Иван Иванов"></div>
+    <div class="field"><label>Телефон</label><input id="nc-phone" type="tel" placeholder="+7"></div>
+    <div class="field"><label>Статус / тип</label>
+      <select id="nc-status">
+        ${STATUSES.map(s=>`<option value="${s}" ${s==='new'?'selected':''}>${statusLabel(s)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Ответственный</label>
+      <select id="nc-resp">
+        ${(state.agents||[]).map(a=>`<option value="${a}" ${a===state.user.name?'selected':''}>${a}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Комментарий по запросу</label><textarea id="nc-request" placeholder="Что ищет клиент…"></textarea></div>
+    <div class="field"><label>Тип жилья</label><input id="nc-type" placeholder="2-комн, студия…"></div>
+    <div class="field"><label>Бюджет</label><input id="nc-budget" placeholder="до 15 млн"></div>
+    <div class="field"><label>Бюджет (млн)</label><input id="nc-budgetMln" type="number" placeholder="15"></div>
+    <div class="field"><label>Район</label><input id="nc-area" placeholder="Адлер"></div>
+    <button class="btn" onclick="saveNewClient()">Создать</button>
+  `);
+}
+function saveNewClient() {
+  const name = document.getElementById('nc-name').value.trim();
+  if (!name) { alert('Укажите имя'); return; }
+  state.clients.unshift({
+    id: id(), name,
+    status: document.getElementById('nc-status').value,
+    responsible: document.getElementById('nc-resp').value,
+    phone: document.getElementById('nc-phone').value,
+    requestComment: document.getElementById('nc-request').value,
+    type: document.getElementById('nc-type').value,
+    budget: document.getElementById('nc-budget').value,
+    budgetMln: +document.getElementById('nc-budgetMln').value || null,
+    area: document.getElementById('nc-area').value,
+    note: '', nextContact: null, nextAction: '', created: new Date().toISOString(),
+  });
+  saveState(state); closeModal(); render();
+}
+function addProperty() {
+  const complexes = [...new Set(state.properties.map(p => p.complex).filter(Boolean))];
+  openModal(`
+    <h2>Новый объект</h2>
+    <div class="field"><label>ЖК / Комплекс (обязательно)</label>
+      <input id="np-complex" list="np-complex-list" placeholder="ЖК Морская симфония">
+      <datalist id="np-complex-list">${complexes.map(c=>`<option value="${c}">`).join('')}</datalist>
+    </div>
+    <div class="field"><label>Название/№ объекта</label><input id="np-title" placeholder="кв.142"></div>
+    <div class="field"><label>Тип</label><select id="np-kind"><option value="new">Новостройка</option><option value="flat">Квартира</option><option value="house">Дом / коттедж</option><option value="th">Таунхаус</option></select></div>
+    <div class="field"><label>Комнат</label><input id="np-rooms" placeholder="2-комн"></div>
+    <div class="field"><label>Спален</label>
+      <select id="np-bedrooms">
+        <option value="">— не задано —</option>
+        ${[0,1,2,3,4,5].map(n => `<option value="${n}">${bedroomsLabel(n)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Ремонт</label>
+      <select id="np-reno">
+        <option value="">Без ремонта</option>
+        <option value="cosmetic">Косметический</option>
+        <option value="euro">Евроремонт</option>
+        <option value="design">Дизайнерский</option>
+      </select>
+    </div>
+    <div class="field"><label>Площадь</label><input id="np-area" placeholder="64 м²"></div>
+    <div class="field"><label>Цена (₽)</label><input id="np-price" type="number"></div>
+    <div class="field"><label>Комиссия (₽ или %)</label><input id="np-commission" placeholder="3% или 372 000"></div>
+    <div class="field"><label>Район</label><input id="np-district"></div>
+    <button class="btn" onclick="saveNewProp()">Создать</button>
+    <p class="meta" style="text-align:center; margin-top: 12px;">Фото можно добавить после создания</p>
+  `);
+}
+function saveNewProp() {
+  const complex = document.getElementById('np-complex').value.trim();
+  if (!complex) { alert('Укажите ЖК / комплекс'); return; }
+  const bedroomsRaw = document.getElementById('np-bedrooms').value;
+  state.properties.unshift({
+    id: id(), complex, title: document.getElementById('np-title').value || '—',
+    kind: document.getElementById('np-kind').value,
+    rooms: document.getElementById('np-rooms').value,
+    bedrooms: bedroomsRaw === '' ? parseBedrooms(document.getElementById('np-rooms').value) : +bedroomsRaw,
+    reno: document.getElementById('np-reno').value,
+    area: document.getElementById('np-area').value,
+    price: +document.getElementById('np-price').value || 0,
+    commission: document.getElementById('np-commission').value || '',
+    district: document.getElementById('np-district').value,
+    developer: '', note: '', photo: '',
+  });
+  saveState(state); closeModal(); render();
+}
+function addTask() {
+  const now = new Date(); now.setMinutes(0,0,0); now.setHours(now.getHours()+1);
+  openModal(`
+    <h2>Новая задача</h2>
+    <div class="field"><label>Что сделать</label><input id="nt-title" placeholder="Позвонить, показать, отправить…"></div>
+    <div class="field"><label>Когда</label><input id="nt-when" type="datetime-local" value="${now.toISOString().slice(0,16)}"></div>
+    <button class="btn" onclick="saveNewTask()">Создать</button>
+  `);
+}
+function saveNewTask() {
+  const title = document.getElementById('nt-title').value.trim();
+  if (!title) { alert('Опишите задачу'); return; }
+  const when = document.getElementById('nt-when').value;
+  state.tasks.unshift({ id: id(), title, when: when ? new Date(when).toISOString() : new Date().toISOString(), done: false, clientId: null });
+  saveState(state); closeModal(); render();
+}
+function openDeal(did) {
+  const d = state.deals.find(x => x.id === did);
+  if (!d) return;
+  const itog = (d.commission||0) - (d.expenses||0);
+  const left = itog - (d.received||0);
+  openModal(`
+    <h2>Сделка</h2>
+    <div class="kpi-grid" style="margin-bottom: 14px;">
+      <div class="kpi"><div class="label">Итого</div><div class="value">${fmtMoneyShort(itog)}</div></div>
+      <div class="kpi"><div class="label">Осталось</div><div class="value" style="color:var(--accent);">${fmtMoneyShort(left)}</div></div>
+    </div>
+    <div class="field"><label>Объект</label><input value="${d.object||''}" onchange="updDeal('${d.id}','object',this.value)"></div>
+    <div class="field"><label>Клиент</label><input value="${d.client||''}" onchange="updDeal('${d.id}','client',this.value)"></div>
+    <div class="field"><label>Дата</label><input type="date" value="${d.date?d.date.slice(0,10):''}" onchange="updDeal('${d.id}','date',new Date(this.value).toISOString())"></div>
+    <div class="field"><label>Цена объекта (₽)</label><input type="number" value="${d.price||0}" onchange="updDeal('${d.id}','price',+this.value)"></div>
+    <div class="field"><label>Комиссия (₽)</label><input type="number" value="${d.commission||0}" onchange="updDeal('${d.id}','commission',+this.value)"></div>
+    <div class="field"><label>Расходы (₽)</label><input type="number" value="${d.expenses||0}" onchange="updDeal('${d.id}','expenses',+this.value)"></div>
+    <div class="field"><label>Получил (₽)</label><input type="number" value="${d.received||0}" onchange="updDeal('${d.id}','received',+this.value)"></div>
+    <div class="field"><label>Комментарий</label><textarea onchange="updDeal('${d.id}','note',this.value)">${d.note||''}</textarea></div>
+    <button class="btn" onclick="closeModal()">Готово</button>
+    <button class="btn danger" style="margin-top:8px;" onclick="delDeal('${d.id}')">Удалить</button>
+  `);
+}
+function updDeal(did, f, v) {
+  const d = state.deals.find(x => x.id === did);
+  if (!d) return; d[f] = v; saveState(state); render();
+}
+function delDeal(did) {
+  if (!confirm('Удалить сделку?')) return;
+  state.deals = state.deals.filter(x => x.id !== did);
+  saveState(state); closeModal(); render();
+}
+function addDeal() {
+  openModal(`
+    <h2>Новая сделка</h2>
+    <div class="field"><label>Объект</label><input id="nd-object" placeholder="ЖК Морская, кв.142"></div>
+    <div class="field"><label>Клиент</label><input id="nd-client" placeholder="ФИО"></div>
+    <div class="field"><label>Дата</label><input id="nd-date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Цена объекта (₽)</label><input id="nd-price" type="number"></div>
+    <div class="field"><label>Комиссия (₽)</label><input id="nd-commission" type="number"></div>
+    <div class="field"><label>Расходы (₽)</label><input id="nd-expenses" type="number" value="0"></div>
+    <div class="field"><label>Получил (₽)</label><input id="nd-received" type="number" value="0"></div>
+    <button class="btn" onclick="saveNewDeal()">Создать</button>
+  `);
+}
+function saveNewDeal() {
+  state.deals.unshift({
+    id: id(),
+    object: document.getElementById('nd-object').value || 'Без названия',
+    client: document.getElementById('nd-client').value,
+    date: new Date(document.getElementById('nd-date').value || Date.now()).toISOString(),
+    price: +document.getElementById('nd-price').value || 0,
+    commission: +document.getElementById('nd-commission').value || 0,
+    expenses: +document.getElementById('nd-expenses').value || 0,
+    received: +document.getElementById('nd-received').value || 0,
+    note: '',
+  });
+  saveState(state); closeModal(); render();
+}
+
+function addPartner() {
+  openModal(`
+    <h2>Партнерская сделка</h2>
+    <div class="field"><label>Объект</label><input id="nd-obj"></div>
+    <div class="field"><label>Партнер</label><input id="nd-partner"></div>
+    <div class="field"><label>Сумма сделки (₽)</label><input id="nd-sum" type="number"></div>
+    <div class="field"><label>Комиссия (₽)</label><input id="nd-com" type="number"></div>
+    <div class="field"><label>Моя доля (%)</label><input id="nd-pct" type="number" value="50"></div>
+    <button class="btn" onclick="saveNewPartner()">Создать</button>
+  `);
+}
+function saveNewPartner() {
+  state.partnerDeals.unshift({
+    id: id(),
+    object: document.getElementById('nd-obj').value || 'Без названия',
+    partner: document.getElementById('nd-partner').value || '',
+    sum: +document.getElementById('nd-sum').value || 0,
+    commission: +document.getElementById('nd-com').value || 0,
+    mySharePct: +document.getElementById('nd-pct').value || 50,
+    status: 'pending',
+  });
+  saveState(state); closeModal(); render();
+}
+
+function editProfile() {
+  openModal(`
+    <h2>Профиль</h2>
+    <div class="field"><label>Имя</label><input id="up-name" value="${state.user.name}"></div>
+    <div class="field"><label>Телефон</label><input id="up-phone" type="tel" value="${state.user.phone||''}"></div>
+    <div class="field"><label>Город</label><input id="up-city" value="${state.user.city}"></div>
+    <div class="field"><label>Роль</label>
+      <select id="up-role">
+        ${['Агент','Руководитель отдела','Директор'].map(r=>`<option ${state.user.role===r?'selected':''}>${r}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn" onclick="saveProfile()">Сохранить</button>
+  `);
+}
+function saveProfile() {
+  state.user.name = document.getElementById('up-name').value;
+  state.user.phone = document.getElementById('up-phone').value;
+  state.user.city = document.getElementById('up-city').value;
+  state.user.role = document.getElementById('up-role').value;
+  saveState(state); closeModal(); render();
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'crm-sochi-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function copyRef() {
+  const link = 'https://t.me/catalog_sochi_bot?ref=' + state.user.refCode;
+  navigator.clipboard?.writeText(link).then(()=>alert('Ссылка скопирована'));
+}
+
+function go(r) { route = r; render(); }
+function setTheme(t) { state.theme = t; saveState(state); render(); }
+function toggleTheme() { setTheme(state.theme === 'dark' ? 'light' : 'dark'); }
+
+/* ============================== TELEGRAM (опционально) ============================== */
+if (window.Telegram && window.Telegram.WebApp) {
+  const tg = window.Telegram.WebApp;
+  tg.ready(); tg.expand();
+  if (tg.colorScheme) setTheme(tg.colorScheme);
+}
+
+/* ============================== INIT ============================== */
+render();
+</script>
+</body>
+</html>
