@@ -10,6 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 :root {
   --bg: #0E0E10;
@@ -331,6 +332,15 @@ table.crm tr:hover td { background: var(--surface); }
 const LS_KEY = 'sochi-crm-v1';
 const PAYMENT_LINK = 'https://qr.nspk.ru/BD10005BFV29G53K9DQOI6HUE8VU9T17';
 const SUBSCRIPTION_PRICE = 500;
+
+/* ============================== SUPABASE ============================== */
+const SUPABASE_URL = 'https://xdbdsyewjjhzqzuaijxi.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_0atPwLPgiiSWzS9iOFcDmw_3iBfJ3LC';
+let supa = null;
+let currentAgentRow = null;
+let syncStatus = 'offline'; // offline | syncing | synced | error
+let pushQueue = new Map(); // {type:id => entityObj}
+let pushTimer = null;
 const defaultState = () => ({
   theme: 'dark',
   user: { name: 'Алёна', phone: '', role: 'Агент', city: 'Сочи', balance: 0, subscriptionEnd: null, refCode: 'AK' + Math.floor(Math.random()*9000+1000), onlyMine: true },
@@ -372,7 +382,14 @@ const defaultState = () => ({
   ],
 });
 
-function id() { return Math.random().toString(36).slice(2, 10); }
+function id() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  // RFC4122 v4 fallback
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0, v = c==='x'?r:(r&0x3|0x8);
+    return v.toString(16);
+  });
+}
 function dateISO(daysOffset = 0, hour = null, minute = 0) {
   const d = new Date();
   d.setDate(d.getDate() + daysOffset);
@@ -561,12 +578,17 @@ function renderTopbar() {
     profile: { t: 'Профиль', s: state.user.phone || 'Настройки и подписка' },
   };
   const cur = titles[route] || titles.home;
+  const syncColor = { synced:'var(--success)', syncing:'var(--accent)', error:'var(--danger)', offline:'var(--text-muted)' }[syncStatus];
+  const syncTitle = { synced:'Синхронизировано', syncing:'Синхронизация...', error:'Ошибка синхронизации', offline:'Локальный режим' }[syncStatus];
   document.getElementById('topbar').innerHTML = `
     <div>
       <h1>${cur.t}</h1>
       <div class="sub">${cur.s}</div>
     </div>
-    <button class="icon-btn" onclick="toggleTheme()" aria-label="Тема">${state.theme==='dark'?'☀':'☾'}</button>
+    <div style="display:flex; gap:6px; align-items:center;">
+      <button class="icon-btn" onclick="go('profile')" title="${syncTitle}" style="font-size: 18px; color: ${syncColor};">●</button>
+      <button class="icon-btn" onclick="toggleTheme()" aria-label="Тема">${state.theme==='dark'?'☀':'☾'}</button>
+    </div>
   `;
 }
 function tabSub() {
@@ -1226,7 +1248,7 @@ function crmTasks() {
 function setTaskFilter(f) { taskFilter = f; render(); }
 function toggleTask(taskId) {
   const t = state.tasks.find(t => t.id === taskId);
-  if (t) { t.done = !t.done; saveState(state); render(); }
+  if (t) { t.done = !t.done; saveState(state); queuePush('task', t); render(); }
 }
 
 function viewProfile() {
@@ -1259,6 +1281,24 @@ function viewProfile() {
         <div style="color:var(--accent); font-weight:600; font-size:18px;">${fmtMoney(refTotal)}</div>
       </div>
       <button class="btn ghost" style="margin-top:10px;" onclick="goCrm('partner')">Открыть рефералку →</button>
+    </div>
+
+    <div class="section-h">Облако (синхронизация)</div>
+    <div class="card" style="padding: 14px;">
+      ${state.user.cloudConnected && currentAgentRow ? `
+        <p class="meta" style="margin:0 0 4px;">Вход: <strong style="color:var(--text);">${state.user.email||currentAgentRow.name}</strong></p>
+        <p class="meta" style="margin:0 0 10px; color: ${syncStatus==='synced'?'var(--success)':syncStatus==='error'?'var(--danger)':'var(--accent)'};">
+          ${syncStatus==='synced'?'● Синхронизировано':syncStatus==='syncing'?'● Синхронизация...':syncStatus==='error'?'● Ошибка':'● Не подключено'}
+        </p>
+        <div class="btn-row">
+          <button class="btn" onclick="syncPullAll()">Обновить</button>
+          <button class="btn ghost" onclick="pushAllLocal()">Залить локальные</button>
+        </div>
+        <button class="btn ghost" style="margin-top:8px;" onclick="cloudSignOut()">Выйти из облака</button>
+      ` : `
+        <p class="meta" style="margin:0 0 10px;">Войдите чтобы данные были на всех устройствах и не пропадали.</p>
+        <button class="btn" onclick="openCloudLogin()">Войти / Регистрация</button>
+      `}
     </div>
 
     <div class="section-h">Агенты</div>
@@ -1360,13 +1400,13 @@ function updClient(cid, field, val) {
   const c = state.clients.find(x => x.id === cid);
   if (!c) return;
   c[field] = val;
-  saveState(state);
-  if (['name','status','phone','type','budget','nextContact'].includes(field)) render();
+  saveState(state); queuePush('client', c);
+  if (['name','status','phone','type','budget','budgetMln','nextContact','nextAction','responsible'].includes(field)) render();
 }
 function delClient(cid) {
   if (!confirm('Удалить клиента?')) return;
   state.clients = state.clients.filter(c => c.id !== cid);
-  saveState(state); closeModal(); render();
+  saveState(state); syncDelete('client', cid); closeModal(); render();
 }
 
 function openProperty(pid) {
@@ -1588,12 +1628,13 @@ function downloadPropertyPdf(pid) {
 }
 function updProp(pid, f, v) {
   const p = state.properties.find(x => x.id === pid);
-  if (!p) return; p[f] = v; saveState(state); render();
+  if (!p) return;
+  p[f] = v; saveState(state); queuePush('property', p); render();
 }
 function delProp(pid) {
   if (!confirm('Удалить объект?')) return;
   state.properties = state.properties.filter(p => p.id !== pid);
-  saveState(state); closeModal(); render();
+  saveState(state); syncDelete('property', pid); closeModal(); render();
 }
 
 function openTask(tid) {
@@ -1609,11 +1650,11 @@ function openTask(tid) {
 }
 function updTask(tid, f, v) {
   const t = state.tasks.find(x => x.id === tid);
-  if (!t) return; t[f] = v; saveState(state); render();
+  if (!t) return; t[f] = v; saveState(state); queuePush('task', t); render();
 }
 function delTask(tid) {
   state.tasks = state.tasks.filter(x => x.id !== tid);
-  saveState(state); closeModal(); render();
+  saveState(state); syncDelete('task', tid); closeModal(); render();
 }
 
 function onFab() {
@@ -1655,7 +1696,7 @@ function saveNewClient() {
   if (!name) { alert('Укажите имя'); return; }
   const resp = document.getElementById('nc-resp').value || state.user.name;
   ensureAgent(resp);
-  state.clients.unshift({
+  const newClient = {
     id: id(), name,
     status: document.getElementById('nc-status').value,
     responsible: resp,
@@ -1665,8 +1706,9 @@ function saveNewClient() {
     budgetMln: +document.getElementById('nc-budgetMln').value || null,
     area: document.getElementById('nc-area').value,
     note: '', nextContact: null, nextAction: '', created: new Date().toISOString(),
-  });
-  saveState(state); closeModal(); render();
+  };
+  state.clients.unshift(newClient);
+  saveState(state); queuePush('client', newClient); closeModal(); render();
 }
 function addProperty() {
   const complexes = [...new Set(state.properties.map(p => p.complex).filter(Boolean))];
@@ -1704,7 +1746,7 @@ function saveNewProp() {
   const complex = document.getElementById('np-complex').value.trim();
   if (!complex) { alert('Укажите ЖК / комплекс'); return; }
   const bedroomsRaw = document.getElementById('np-bedrooms').value;
-  state.properties.unshift({
+  const newProp = {
     id: id(), complex, title: document.getElementById('np-title').value || '—',
     kind: document.getElementById('np-kind').value,
     bedrooms: bedroomsRaw === '' ? null : +bedroomsRaw,
@@ -1717,8 +1759,9 @@ function saveNewProp() {
     agent: state.user.name,
     agentPhone: state.user.phone || state.agentPhones?.[state.user.name] || '',
     createdAt: new Date().toISOString(),
-  });
-  saveState(state); closeModal(); render();
+  };
+  state.properties.unshift(newProp);
+  saveState(state); queuePush('property', newProp); closeModal(); render();
 }
 function addTask() {
   const now = new Date(); now.setMinutes(0,0,0); now.setHours(now.getHours()+1);
@@ -1733,8 +1776,9 @@ function saveNewTask() {
   const title = document.getElementById('nt-title').value.trim();
   if (!title) { alert('Опишите задачу'); return; }
   const when = document.getElementById('nt-when').value;
-  state.tasks.unshift({ id: id(), title, when: when ? new Date(when).toISOString() : new Date().toISOString(), done: false, clientId: null });
-  saveState(state); closeModal(); render();
+  const newTask = { id: id(), title, when: when ? new Date(when).toISOString() : new Date().toISOString(), done: false, clientId: null };
+  state.tasks.unshift(newTask);
+  saveState(state); queuePush('task', newTask); closeModal(); render();
 }
 function openDeal(did) {
   const d = state.deals.find(x => x.id === did);
@@ -1761,12 +1805,12 @@ function openDeal(did) {
 }
 function updDeal(did, f, v) {
   const d = state.deals.find(x => x.id === did);
-  if (!d) return; d[f] = v; saveState(state); render();
+  if (!d) return; d[f] = v; saveState(state); queuePush('deal', d); render();
 }
 function delDeal(did) {
   if (!confirm('Удалить сделку?')) return;
   state.deals = state.deals.filter(x => x.id !== did);
-  saveState(state); closeModal(); render();
+  saveState(state); syncDelete('deal', did); closeModal(); render();
 }
 function addDeal() {
   openModal(`
@@ -1782,7 +1826,7 @@ function addDeal() {
   `);
 }
 function saveNewDeal() {
-  state.deals.unshift({
+  const newDeal = {
     id: id(),
     object: document.getElementById('nd-object').value || 'Без названия',
     client: document.getElementById('nd-client').value,
@@ -1792,8 +1836,9 @@ function saveNewDeal() {
     expenses: +document.getElementById('nd-expenses').value || 0,
     received: +document.getElementById('nd-received').value || 0,
     note: '',
-  });
-  saveState(state); closeModal(); render();
+  };
+  state.deals.unshift(newDeal);
+  saveState(state); queuePush('deal', newDeal); closeModal(); render();
 }
 
 function addPartner() {
@@ -2103,6 +2148,264 @@ function saveNewAgent() {
   setTimeout(()=>alert('Готово! Вы вошли как ' + name + '. Список клиентов пуст — добавьте первого через раздел Клиенты.'), 200);
 }
 
+/* ============================== SUPABASE: MAPPERS ============================== */
+function clientToDB(c) {
+  return {
+    id: c.id, name: c.name, phone: c.phone, status: c.status,
+    request_comment: c.requestComment || null, type: c.type,
+    budget_mln: c.budgetMln, area: c.area,
+    next_contact: c.nextContact, next_action: c.nextAction,
+    note: c.note, responsible_name: c.responsible,
+    responsible_agent_id: currentAgentRow?.id || null,
+  };
+}
+function clientFromDB(r) {
+  return {
+    id: r.id, name: r.name, phone: r.phone, status: r.status || 'new',
+    requestComment: r.request_comment || '', type: r.type || '',
+    budgetMln: r.budget_mln, area: r.area || '',
+    nextContact: r.next_contact, nextAction: r.next_action || '',
+    note: r.note || '', responsible: r.responsible_name || '',
+    created: r.created_at,
+  };
+}
+function propToDB(p) {
+  return {
+    id: p.id, complex: p.complex, title: p.title, kind: p.kind,
+    bedrooms: p.bedrooms, reno: p.reno || null, area: p.area,
+    price: p.price || null, commission: p.commission || null,
+    district: p.district, developer: p.developer || null, note: p.note || null,
+    agent_id: currentAgentRow?.id || null,
+    agent_name: p.agent || currentAgentRow?.name,
+    agent_phone: p.agentPhone || state.user.phone || null,
+  };
+}
+function propFromDB(r) {
+  return {
+    id: r.id, complex: r.complex, title: r.title, kind: r.kind || 'new',
+    bedrooms: r.bedrooms, reno: r.reno || '', area: r.area || '',
+    price: r.price || 0, commission: r.commission || '',
+    district: r.district || '', developer: r.developer || '', note: r.note || '',
+    agent: r.agent_name || '', agentPhone: r.agent_phone || '',
+    photos: [], nextEvent: null, nextEventTitle: '',
+  };
+}
+function taskToDB(t) {
+  return {
+    id: t.id, title: t.title, when_at: t.when, done: !!t.done,
+    client_id: t.clientId || null, agent_id: currentAgentRow?.id || null,
+  };
+}
+function taskFromDB(r) {
+  return { id: r.id, title: r.title, when: r.when_at, done: !!r.done, clientId: r.client_id };
+}
+function dealToDB(d) {
+  return {
+    id: d.id, object_text: d.object, client_name: d.client,
+    date: d.date ? d.date.slice(0,10) : null, price: d.price || null,
+    commission: d.commission || null, expenses: d.expenses || 0,
+    received: d.received || 0, note: d.note || null,
+    agent_id: currentAgentRow?.id || null,
+  };
+}
+function dealFromDB(r) {
+  return {
+    id: r.id, object: r.object_text, client: r.client_name,
+    date: r.date, price: r.price || 0, commission: r.commission || 0,
+    expenses: r.expenses || 0, received: r.received || 0, note: r.note || '',
+  };
+}
+function agentToDB(name, phone, role) {
+  return { name, phone, role, city: state.user.city || 'Сочи' };
+}
+
+/* ============================== SUPABASE: AUTH ============================== */
+function initSupabase() {
+  if (!window.supabase) { console.warn('Supabase JS не загружен'); return; }
+  try {
+    supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    supa.auth.getSession().then(({ data }) => {
+      if (data?.session?.user) onAuthLogin(data.session.user);
+      renderTopbar();
+    });
+    supa.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) onAuthLogin(session.user);
+      if (event === 'SIGNED_OUT') { currentAgentRow = null; syncStatus = 'offline'; render(); }
+    });
+  } catch (e) { console.error('initSupabase:', e); }
+}
+
+async function onAuthLogin(authUser) {
+  syncStatus = 'syncing'; renderTopbar();
+  try {
+    let { data: agent, error } = await supa.from('agents').select('*').eq('auth_user_id', authUser.id).maybeSingle();
+    if (error) console.error('agents fetch:', error);
+    if (!agent) {
+      // первый вход — создаём профиль агента
+      const meta = authUser.user_metadata || {};
+      const ins = await supa.from('agents').insert({
+        auth_user_id: authUser.id,
+        name: meta.name || state.user.name || authUser.email.split('@')[0],
+        role: meta.role || 'Директор',
+        city: state.user.city || 'Сочи',
+        phone: meta.phone || '',
+      }).select().maybeSingle();
+      agent = ins.data;
+      if (ins.error) { alert('Ошибка создания профиля агента: ' + ins.error.message); return; }
+    }
+    currentAgentRow = agent;
+    state.user.name = agent.name;
+    state.user.role = agent.role;
+    state.user.phone = agent.phone || state.user.phone;
+    state.user.email = authUser.email;
+    state.user.cloudConnected = true;
+    saveState(state);
+    await syncPullAll();
+    syncStatus = 'synced';
+    render();
+  } catch (e) {
+    console.error(e); syncStatus = 'error'; renderTopbar();
+    alert('Ошибка входа: ' + e.message);
+  }
+}
+
+async function cloudSignUp(email, password, name, role) {
+  if (!supa) initSupabase();
+  const { data, error } = await supa.auth.signUp({
+    email, password,
+    options: { data: { name, role, phone: state.user.phone || '' } }
+  });
+  if (error) { alert('Регистрация: ' + error.message); return false; }
+  alert('Готово. Проверьте почту ' + email + ' — там письмо для подтверждения. После подтверждения войдите.');
+  return true;
+}
+async function cloudSignIn(email, password) {
+  if (!supa) initSupabase();
+  const { data, error } = await supa.auth.signInWithPassword({ email, password });
+  if (error) { alert('Вход: ' + error.message); return false; }
+  return true;
+}
+async function cloudSignOut() {
+  if (!supa) return;
+  await supa.auth.signOut();
+  state.user.cloudConnected = false;
+  saveState(state);
+}
+
+/* ============================== SUPABASE: SYNC ============================== */
+async function syncPullAll() {
+  if (!supa || !currentAgentRow) return;
+  syncStatus = 'syncing'; renderTopbar();
+  try {
+    const [cl, pr, tk, dl] = await Promise.all([
+      supa.from('clients').select('*'),
+      supa.from('properties').select('*'),
+      supa.from('tasks').select('*'),
+      supa.from('deals').select('*'),
+    ]);
+    if (cl.data) state.clients = cl.data.map(clientFromDB);
+    if (pr.data) state.properties = pr.data.map(propFromDB);
+    if (tk.data) state.tasks = tk.data.map(taskFromDB);
+    if (dl.data) state.deals = dl.data.map(dealFromDB);
+    // собираем список агентов
+    const { data: agents } = await supa.from('agents').select('name, phone');
+    if (agents) {
+      state.agents = agents.map(a => a.name);
+      state.agentPhones = {};
+      agents.forEach(a => { if (a.phone) state.agentPhones[a.name] = a.phone; });
+    }
+    saveState(state);
+    syncStatus = 'synced';
+  } catch (e) { console.error('pullAll:', e); syncStatus = 'error'; }
+  renderTopbar();
+}
+
+function queuePush(type, obj) {
+  if (!supa || !currentAgentRow) return;
+  pushQueue.set(type + ':' + obj.id, { type, obj });
+  syncStatus = 'syncing'; renderTopbar();
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(flushPush, 1000);
+}
+async function flushPush() {
+  if (!supa || pushQueue.size === 0) return;
+  const items = Array.from(pushQueue.values());
+  pushQueue.clear();
+  const mappers = { client: clientToDB, property: propToDB, task: taskToDB, deal: dealToDB };
+  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals' };
+  let okCount = 0, errCount = 0;
+  for (const { type, obj } of items) {
+    try {
+      const { error } = await supa.from(tables[type]).upsert(mappers[type](obj));
+      if (error) { console.error('push '+type, error); errCount++; }
+      else okCount++;
+    } catch (e) { console.error(e); errCount++; }
+  }
+  syncStatus = errCount === 0 ? 'synced' : 'error';
+  renderTopbar();
+}
+async function syncDelete(type, recordId) {
+  if (!supa || !currentAgentRow) return;
+  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals' };
+  syncStatus = 'syncing'; renderTopbar();
+  const { error } = await supa.from(tables[type]).delete().eq('id', recordId);
+  syncStatus = error ? 'error' : 'synced';
+  renderTopbar();
+}
+
+/* ============================== SUPABASE: UI ============================== */
+function openCloudLogin() {
+  openModal(`
+    <h2>Облако: вход</h2>
+    <p class="meta" style="margin-bottom: 14px;">Войдите чтобы данные синхронизировались между всеми устройствами.</p>
+    <div class="tabs" style="margin-bottom: 14px;">
+      <button class="tab active" onclick="document.getElementById('cl-mode').value='in'; document.getElementById('cl-name-field').style.display='none'; document.getElementById('cl-role-field').style.display='none'; document.getElementById('cl-submit').textContent='Войти';">Войти</button>
+      <button class="tab" onclick="document.getElementById('cl-mode').value='up'; document.getElementById('cl-name-field').style.display='block'; document.getElementById('cl-role-field').style.display='block'; document.getElementById('cl-submit').textContent='Зарегистрироваться';">Регистрация</button>
+    </div>
+    <input id="cl-mode" type="hidden" value="in">
+    <div class="field"><label>Email</label><input id="cl-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+    <div class="field"><label>Пароль</label><input id="cl-password" type="password" autocomplete="current-password" placeholder="минимум 6 знаков"></div>
+    <div class="field" id="cl-name-field" style="display:none;"><label>Имя</label><input id="cl-name" value="${state.user.name||''}"></div>
+    <div class="field" id="cl-role-field" style="display:none;"><label>Роль</label>
+      <select id="cl-role">
+        <option>Агент</option>
+        <option>Руководитель отдела</option>
+        <option selected>Директор</option>
+      </select>
+    </div>
+    <button id="cl-submit" class="btn" onclick="submitCloudAuth()">Войти</button>
+  `);
+}
+async function submitCloudAuth() {
+  const mode = document.getElementById('cl-mode').value;
+  const email = document.getElementById('cl-email').value.trim();
+  const password = document.getElementById('cl-password').value;
+  if (!email || password.length < 6) { alert('Заполните email и пароль'); return; }
+  if (mode === 'in') {
+    const ok = await cloudSignIn(email, password);
+    if (ok) closeModal();
+  } else {
+    const name = document.getElementById('cl-name').value.trim() || email.split('@')[0];
+    const role = document.getElementById('cl-role').value;
+    const ok = await cloudSignUp(email, password, name, role);
+    if (ok) closeModal();
+  }
+}
+async function pushAllLocal() {
+  if (!supa || !currentAgentRow) { alert('Сначала войдите в облако'); return; }
+  if (!confirm('Загрузить все локальные данные в облако? Если в облаке уже есть данные с теми же ID — они обновятся.')) return;
+  syncStatus = 'syncing'; renderTopbar();
+  try {
+    if (state.clients.length) await supa.from('clients').upsert(state.clients.map(clientToDB));
+    if (state.properties.length) await supa.from('properties').upsert(state.properties.map(propToDB));
+    if (state.tasks.length) await supa.from('tasks').upsert(state.tasks.map(taskToDB));
+    if (state.deals.length) await supa.from('deals').upsert(state.deals.map(dealToDB));
+    syncStatus = 'synced';
+    alert('Локальные данные загружены в облако');
+  } catch (e) { console.error(e); syncStatus = 'error'; alert('Ошибка: ' + e.message); }
+  renderTopbar();
+}
+
 /* ============================== TELEGRAM (опционально) ============================== */
 if (window.Telegram && window.Telegram.WebApp) {
   const tg = window.Telegram.WebApp;
@@ -2112,6 +2415,7 @@ if (window.Telegram && window.Telegram.WebApp) {
 
 /* ============================== INIT ============================== */
 render();
+initSupabase();
 </script>
 </body>
 </html>
