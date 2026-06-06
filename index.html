@@ -404,6 +404,12 @@ function loadState() {
       if (!s.agents) s.agents = ['Алёна', 'М. Колесников', 'Е. Сидорова'];
       if (!s.deals) s.deals = [];
       if (s.user && s.user.onlyMine === undefined) s.user.onlyMine = (s.user.role === 'Агент');
+      if (s.agents) s.agents = [...new Set(s.agents.filter(Boolean))];
+      // конвертируем не-UUID ID в UUID (для совместимости с Supabase)
+      const isUuid = x => typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
+      ['clients','properties','tasks','deals','partnerDeals','referrals'].forEach(k => {
+        (s[k]||[]).forEach(r => { if (r && !isUuid(r.id)) r.id = id(); });
+      });
       s.clients.forEach(c => {
         if (c.responsible === undefined) c.responsible = s.user?.name || 'Алёна';
         if (c.nextAction === undefined) c.nextAction = '';
@@ -548,9 +554,6 @@ function render() {
 }
 
 function renderSidebar() {
-  const isCrmDeals = route==='crm' && crmTab==='deals';
-  const isCrmPartner = route==='crm' && crmTab==='partner';
-  const isCrmTasks = route==='crm' && (crmTab==='tasks' || crmTab==='calendar');
   document.getElementById('sidebar').innerHTML = `
     <div class="brand">
       <img class="logo" src="icon.svg" alt="" style="background: transparent; border-radius: 7px;">
@@ -559,10 +562,10 @@ function renderSidebar() {
     <button class="nav-item ${route==='home'?'active':''}" onclick="go('home')"><span class="ico">⌂</span><span>Главная</span></button>
     <button class="nav-item ${route==='properties'?'active':''}" onclick="go('properties')"><span class="ico">▦</span><span>Объекты</span></button>
     <button class="nav-item ${route==='clients'?'active':''}" onclick="go('clients')"><span class="ico">☺</span><span>Клиенты</span></button>
-    <button class="nav-item ${isCrmTasks?'active':''}" onclick="goCrm('tasks')"><span class="ico">✓</span><span>Задачи</span></button>
+    <button class="nav-item ${route==='crm'?'active':''}" onclick="go('crm')"><span class="ico">✓</span><span>Задачи</span></button>
     <div class="sidebar-section">Финансы</div>
-    <button class="nav-item ${isCrmDeals?'active':''}" onclick="goCrm('deals')"><span class="ico">⚐</span><span>Сделки</span></button>
-    <button class="nav-item ${isCrmPartner?'active':''}" onclick="goCrm('partner')"><span class="ico">⚹</span><span>Партнерка</span></button>
+    <button class="nav-item ${route==='finance' && financeTab==='deals'?'active':''}" onclick="financeTab='deals'; go('finance')"><span class="ico">⚐</span><span>Сделки</span></button>
+    <button class="nav-item ${route==='finance' && financeTab==='partner'?'active':''}" onclick="financeTab='partner'; go('finance')"><span class="ico">⚹</span><span>Партнерка</span></button>
     <div style="margin-top: auto;">
       <button class="nav-item ${route==='profile'?'active':''}" onclick="go('profile')"><span class="ico">◉</span><span>Профиль</span></button>
     </div>
@@ -574,10 +577,8 @@ function renderTopbar() {
     home: { t: 'Главная', s: state.user.name + ' · ' + state.user.role },
     properties: { t: 'Объекты', s: state.properties.length + ' в каталоге' },
     clients: { t: 'Клиенты', s: state.clients.length + ' всего' },
-    crm: {
-      t: crmTab==='deals' ? 'Сделки' : crmTab==='partner' ? 'Партнерка' : 'Задачи',
-      s: tabSub()
-    },
+    crm: { t: 'Задачи', s: tabSub() },
+    finance: { t: 'Финансы', s: financeTab==='deals' ? state.deals.length+' сделок' : 'Партнерка и рефералы' },
     profile: { t: 'Профиль', s: state.user.phone || 'Настройки и подписка' },
   };
   const cur = titles[route] || titles.home;
@@ -610,6 +611,7 @@ function renderContent() {
   else if (route === 'properties') c.innerHTML = viewProperties();
   else if (route === 'clients') c.innerHTML = viewClients();
   else if (route === 'crm') c.innerHTML = viewCRM();
+  else if (route === 'finance') c.innerHTML = viewFinance();
   else if (route === 'profile') c.innerHTML = viewProfile();
   c.scrollTop = 0;
 }
@@ -651,11 +653,11 @@ function viewHome() {
         <div class="label">Активных клиентов</div>
         <div class="value">${activeClients.length}</div>
       </div>
-      <div class="kpi" onclick="goCrm('deals')" style="cursor:pointer;">
+      <div class="kpi" onclick="financeTab='deals'; go('finance')" style="cursor:pointer;">
         <div class="label">Сделки · осталось</div>
         <div class="value" style="color:var(--accent);">${fmtMoneyShort(dealsTotal)}</div>
       </div>
-      <div class="kpi" onclick="goCrm('partner')" style="cursor:pointer;">
+      <div class="kpi" onclick="financeTab='partner'; go('finance')" style="cursor:pointer;">
         <div class="label">Партнерка · баланс</div>
         <div class="value" style="color:var(--success);">${fmtMoneyShort(refTotal)}</div>
       </div>
@@ -980,26 +982,24 @@ function renderClientRows(list) {
 }
 
 function viewCRM() {
-  if (crmTab === 'deals' || crmTab === 'partner') return crmFinance();
-  const tabs = [
-    { k:'tasks', l:'Задачи' },
-    { k:'calendar', l:'Календарь' },
-  ];
+  // Задачи — это только Задачи + Календарь. Точка.
+  if (crmTab !== 'tasks' && crmTab !== 'calendar') crmTab = 'tasks';
   return `
     <div class="tabs">
-      ${tabs.map(t => `<button class="tab ${crmTab===t.k?'active':''}" onclick="setCrmTab('${t.k}')">${t.l}</button>`).join('')}
+      <button class="tab ${crmTab==='tasks'?'active':''}" onclick="setCrmTab('tasks')">Задачи</button>
+      <button class="tab ${crmTab==='calendar'?'active':''}" onclick="setCrmTab('calendar')">Календарь</button>
     </div>
     ${crmTab==='tasks' ? crmTasks() : crmCalendar()}
   `;
 }
-function crmFinance() {
+let financeTab = 'deals';
+function viewFinance() {
   return `
-    ${crmBackLink()}
     <div class="tabs">
-      <button class="tab ${crmTab==='deals'?'active':''}" onclick="setCrmTab('deals')">Сделки</button>
-      <button class="tab ${crmTab==='partner'?'active':''}" onclick="setCrmTab('partner')">Партнерка</button>
+      <button class="tab ${financeTab==='deals'?'active':''}" onclick="financeTab='deals'; render()">Сделки</button>
+      <button class="tab ${financeTab==='partner'?'active':''}" onclick="financeTab='partner'; render()">Партнерка</button>
     </div>
-    ${crmTab==='deals' ? crmDealsBody() : crmPartnerBody()}
+    ${financeTab==='deals' ? crmDealsBody() : crmPartnerBody()}
   `;
 }
 
@@ -1277,13 +1277,21 @@ function viewProfile() {
       <button class="btn" style="margin-top:10px;" onclick="openPayment()">Оплатить ${SUBSCRIPTION_PRICE} ₽</button>
     </div>
 
+    <div class="section-h">Финансы</div>
+    <div class="card" style="padding: 14px;">
+      <div class="btn-row">
+        <button class="btn ghost" onclick="financeTab='deals'; go('finance')">Сделки</button>
+        <button class="btn ghost" onclick="financeTab='partner'; go('finance')">Партнерка</button>
+      </div>
+    </div>
+
     <div class="section-h">Рефералы</div>
     <div class="card">
       <div class="card-row">
         <div><h3>Баланс</h3><p class="meta">${state.referrals.length} начислений</p></div>
         <div style="color:var(--accent); font-weight:600; font-size:18px;">${fmtMoney(refTotal)}</div>
       </div>
-      <button class="btn ghost" style="margin-top:10px;" onclick="goCrm('partner')">Открыть рефералку →</button>
+      <button class="btn ghost" style="margin-top:10px;" onclick="financeTab='partner'; go('finance')">Открыть рефералку →</button>
     </div>
 
     <div class="section-h">Облако (синхронизация)</div>
@@ -1488,9 +1496,9 @@ function openProperty(pid) {
       <datalist id="agents-list-prop">${(state.agents||[]).map(a=>`<option value="${a}">`).join('')}</datalist>
     </div>
     <div class="field"><label>Телефон агента</label><input type="tel" value="${p.agentPhone||state.agentPhones?.[p.agent]||''}" onchange="updProp('${p.id}','agentPhone',this.value)" placeholder="+7"></div>
-    ${state.user.role === 'Директор' ? `
+    ${(state.user.role === 'Директор' || p.agent === state.user.name) ? `
       <div class="card" style="background: rgba(127,119,221,.1); padding: 12px; margin-bottom: 12px;">
-        <p class="meta" style="margin: 0 0 8px; color: #7F77DD; font-size: 11px;">🔒 ПРИВАТНО · только для директора</p>
+        <p class="meta" style="margin: 0 0 8px; color: #7F77DD; font-size: 11px;">🔒 Контакт собственника · виден только вам</p>
         <div class="field" style="margin-bottom: 8px;"><label>Имя собственника</label><input value="${p.ownerName||''}" onchange="updProp('${p.id}','ownerName',this.value)" placeholder="ФИО"></div>
         <div class="field" style="margin-bottom: 0;"><label>Телефон собственника</label><input type="tel" value="${p.ownerPhone||''}" onchange="updProp('${p.id}','ownerPhone',this.value)" placeholder="+7"></div>
       </div>` : ''}
@@ -2471,6 +2479,8 @@ async function cloudSignOut() {
 /* ============================== SUPABASE: SYNC ============================== */
 async function syncPullAll() {
   if (!supa || !currentAgentRow) return;
+  // если есть незаконченный пуш — сначала дождёмся, иначе локальные изменения сотрутся pull-ом
+  if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; await flushPush(); }
   syncStatus = 'syncing'; renderTopbar();
   try {
     const [cl, pr, tk, dl, pd, rf] = await Promise.all([
@@ -2481,25 +2491,32 @@ async function syncPullAll() {
       supa.from('partner_deals').select('*'),
       supa.from('referrals').select('*'),
     ]);
-    if (cl.data) state.clients = cl.data.map(clientFromDB);
+    // MERGE стратегия: серверные данные имеют приоритет, локальные «лишние» пушим в облако
+    function mergeLists(localList, serverList, mapper, pushType) {
+      const serverIds = new Set(serverList.map(r => r.id));
+      const localOnly = (localList||[]).filter(c => !serverIds.has(c.id));
+      // отправляем локальные «лишние» в облако
+      localOnly.forEach(obj => queuePush(pushType, obj));
+      return [...serverList.map(mapper), ...localOnly];
+    }
+    if (cl.data) state.clients = mergeLists(state.clients, cl.data, clientFromDB, 'client');
     if (pr.data) {
       // сохраняем локальные фото (они пока не в БД)
       const localPhotos = {};
       state.properties.forEach(p => { if (p.photos && p.photos.length) localPhotos[p.id] = p.photos; });
-      state.properties = pr.data.map(r => {
+      state.properties = mergeLists(state.properties, pr.data, r => {
         const p = propFromDB(r);
         if (localPhotos[p.id]) p.photos = localPhotos[p.id];
         return p;
-      });
+      }, 'property');
     }
-    if (tk.data) state.tasks = tk.data.map(taskFromDB);
-    if (dl.data) state.deals = dl.data.map(dealFromDB);
-    if (pd.data) state.partnerDeals = pd.data.map(partnerDealFromDB);
-    if (rf.data) state.referrals = rf.data.map(referralFromDB);
-    // собираем список агентов
+    if (tk.data) state.tasks = mergeLists(state.tasks, tk.data, taskFromDB, 'task');
+    if (dl.data) state.deals = mergeLists(state.deals, dl.data, dealFromDB, 'deal');
+    if (pd.data) state.partnerDeals = mergeLists(state.partnerDeals, pd.data, partnerDealFromDB, 'partner');
+    if (rf.data) state.referrals = mergeLists(state.referrals, rf.data, referralFromDB, 'referral');
     const { data: agents } = await supa.from('agents').select('name, phone');
     if (agents) {
-      state.agents = agents.map(a => a.name);
+      state.agents = [...new Set(agents.map(a => a.name).filter(Boolean))];
       state.agentPhones = {};
       agents.forEach(a => { if (a.phone) state.agentPhones[a.name] = a.phone; });
     }
@@ -2522,15 +2539,18 @@ async function flushPush() {
   pushQueue.clear();
   const mappers = { client: clientToDB, property: propToDB, task: taskToDB, deal: dealToDB, partner: partnerDealToDB, referral: referralToDB };
   const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', partner: 'partner_deals', referral: 'referrals' };
-  let okCount = 0, errCount = 0;
+  let okCount = 0, errCount = 0, lastError = null;
   for (const { type, obj } of items) {
     try {
       const { error } = await supa.from(tables[type]).upsert(mappers[type](obj));
-      if (error) { console.error('push '+type, error); errCount++; }
+      if (error) { console.error('push '+type, error, obj); errCount++; lastError = error; }
       else okCount++;
-    } catch (e) { console.error(e); errCount++; }
+    } catch (e) { console.error(e); errCount++; lastError = e; }
   }
   syncStatus = errCount === 0 ? 'synced' : 'error';
+  if (errCount > 0 && lastError) {
+    console.warn('Не удалось синхронизировать ' + errCount + ' записей. ' + (lastError.message || lastError));
+  }
   renderTopbar();
 }
 async function syncDelete(type, recordId) {
