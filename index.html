@@ -359,8 +359,8 @@ const defaultState = () => ({
     { id: id(), title: 'кв.12', complex: 'ЖК Морская симфония', kind: 'flat', bedrooms: 2, reno: 'cosmetic', area: '58 м²', price: 13500000, district: 'Адлер', developer: '', note: 'С мебелью', photos: [], agent: 'Алёна', agentPhone: '' },
     { id: id(), title: 'Дом в Кудепсте', complex: 'КП Кудепста', kind: 'house', bedrooms: 4, reno: 'design', area: '180 м² · 6 сот', price: 38000000, district: 'Хоста', developer: '', note: 'Современный дом, бассейн', photos: [], agent: 'Алёна', agentPhone: '' },
     { id: id(), title: 'Коттедж Альпийский', complex: 'КП Красная Поляна', kind: 'house', bedrooms: 5, reno: 'design', area: '240 м² · 10 сот', price: 65000000, district: 'Красная Поляна', developer: '', note: 'Видовой участок, баня', photos: [], agent: 'Алёна', agentPhone: '' },
-    { id: id(), title: 'Секция 7', complex: 'ТХ Морской бриз', kind: 'th', bedrooms: 3, reno: 'euro', area: '110 м² · 2 сот', price: 19500000, district: 'Адлер', developer: 'ЮгСтрой', note: '2 уровня, терраса', photos: [], agent: 'Алёна', agentPhone: '' },
-    { id: id(), title: 'Секция 12', complex: 'ТХ Олимпийская деревня', kind: 'th', bedrooms: 4, reno: '', area: '135 м² · 3 сот', price: 26000000, district: 'Сириус', developer: 'Olimp Town', note: 'Закрытая территория', photos: [], agent: 'Алёна', agentPhone: '' },
+    { id: id(), title: 'Секция 7', complex: 'Морской бриз', kind: 'house', bedrooms: 3, reno: 'euro', area: '110 м² · 2 сот', price: 19500000, district: 'Адлер', developer: 'ЮгСтрой', note: '2 уровня, терраса (таунхаус)', photos: [], agent: 'Алёна', agentPhone: '' },
+    { id: id(), title: 'Секция 12', complex: 'Олимпийская деревня', kind: 'house', bedrooms: 4, reno: '', area: '135 м² · 3 сот', price: 26000000, district: 'Сириус', developer: 'Olimp Town', note: 'Таунхаус, закрытая территория', photos: [], agent: 'Алёна', agentPhone: '' },
   ],
   tasks: [
     { id: id(), title: 'Показ ЖК Морская — А. Иванова', when: dateISO(0,14), done: false, clientId: null },
@@ -420,6 +420,7 @@ function loadState() {
       s.properties.forEach(p => {
         if (p.complex === undefined) p.complex = p.title || '';
         if (p.kind === 'sec') p.kind = 'flat';
+        if (p.kind === 'th') p.kind = 'house';
         if (p.commission === undefined) p.commission = '';
         if (p.bedrooms === undefined) p.bedrooms = parseBedrooms(p.rooms);
         if (p.reno === undefined) p.reno = '';
@@ -428,6 +429,8 @@ function loadState() {
         if (p.agentPhone === undefined) p.agentPhone = '';
         if (p.nextEvent === undefined) p.nextEvent = null;
         if (p.nextEventTitle === undefined) p.nextEventTitle = '';
+        if (p.ownerPhone === undefined) p.ownerPhone = '';
+        if (p.ownerName === undefined) p.ownerName = '';
         delete p.photo;
         delete p.rooms;
       });
@@ -518,7 +521,7 @@ const statusStripe = (s) => ({
   client:'#85B7EB', cold:'#85B7EB',
   done:'transparent', archive:'transparent'
 })[s] || 'transparent';
-const kindLabel = (k) => ({ new:'Новостройка', flat:'Квартира', house:'Дом', th:'Таунхаус' })[k] || k;
+const kindLabel = (k) => ({ new:'Новостройка', flat:'Квартира', house:'Дом' })[k] || 'Дом';
 function parseBedrooms(roomsStr) {
   if (!roomsStr) return null;
   const s = String(roomsStr).toLowerCase();
@@ -676,6 +679,7 @@ function viewHome() {
   `;
 }
 function goCrm(tab) {
+  history.pushState({ route: 'crm', crmTab: tab }, '', '#crm/' + tab);
   route = 'crm'; crmTab = tab;
   try { localStorage.setItem(ROUTE_KEY, 'crm'); localStorage.setItem(ROUTE_KEY+':crm', tab); } catch(e) {}
   render();
@@ -782,7 +786,6 @@ function viewProperties() {
       <button class="tab ${propTab==='new'?'active':''}" onclick="setPropTab('new')">Новостройки</button>
       <button class="tab ${propTab==='flat'?'active':''}" onclick="setPropTab('flat')">Квартиры</button>
       <button class="tab ${propTab==='house'?'active':''}" onclick="setPropTab('house')">Дома</button>
-      <button class="tab ${propTab==='th'?'active':''}" onclick="setPropTab('th')">Таунхаусы</button>
     </div>
     <input class="search" placeholder="Поиск ЖК, района, застройщика…" value="${propSearch}" oninput="propSearch=this.value; render()" />
     <div style="display:flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
@@ -1301,14 +1304,15 @@ function viewProfile() {
       `}
     </div>
 
-    <div class="section-h">Агенты</div>
+    ${state.user.role !== 'Агент' ? `
+    <div class="section-h">Сотрудники</div>
     <div class="card" style="padding: 14px;">
-      <p class="meta" style="margin:0 0 8px;">Текущий: <strong style="color:var(--text);">${state.user.name}</strong></p>
+      <p class="meta" style="margin:0 0 10px;">Текущий: <strong style="color:var(--text);">${state.user.name}</strong> · ${state.user.role}</p>
       <div class="btn-row">
-        <button class="btn ghost" onclick="switchAgent()">Сменить агента</button>
-        <button class="btn" onclick="registerAgent()">+ Регистрация</button>
+        <button class="btn ghost" onclick="switchAgent()">Управление</button>
+        <button class="btn" onclick="registerAgent()">+ Сотрудник</button>
       </div>
-    </div>
+    </div>` : ''}
 
     <div class="section-h">Настройки</div>
     <div class="card" style="padding: 0 14px;">
@@ -1339,6 +1343,12 @@ function viewProfile() {
       <div class="profile-row" onclick="exportPropsXls()">
         <span class="label">Экспорт объектов</span><span class="val">.xls</span>
       </div>
+      <div class="profile-row" onclick="importClientsXls()">
+        <span class="label">Импорт клиентов</span><span class="val">.csv/.xls</span>
+      </div>
+      <div class="profile-row" onclick="importPropsXls()">
+        <span class="label">Импорт объектов</span><span class="val">.csv/.xls</span>
+      </div>
       <div class="profile-row" onclick="exportData()">
         <span class="label">Бэкап всех данных</span><span class="val">JSON</span>
       </div>
@@ -1358,8 +1368,19 @@ function openModal(html) {
   const bg = document.getElementById('modalBg');
   document.getElementById('modal').innerHTML = `<div class="grab"></div>${html}`;
   bg.classList.add('open');
+  // Делаем кнопку "назад" закрывающей модалку
+  if (!bg.dataset.pushed) {
+    history.pushState({ route, crmTab, modal: true }, '', location.hash);
+    bg.dataset.pushed = '1';
+  }
 }
-function closeModal() { document.getElementById('modalBg').classList.remove('open'); }
+function closeModal() {
+  const bg = document.getElementById('modalBg');
+  bg.classList.remove('open');
+  if (bg.dataset.pushed) {
+    delete bg.dataset.pushed;
+  }
+}
 
 function openClient(cid) {
   const c = state.clients.find(x => x.id === cid);
@@ -1441,7 +1462,6 @@ function openProperty(pid) {
         <option value="new" ${p.kind==='new'?'selected':''}>Новостройка</option>
         <option value="flat" ${p.kind==='flat'?'selected':''}>Квартира</option>
         <option value="house" ${p.kind==='house'?'selected':''}>Дом / коттедж</option>
-        <option value="th" ${p.kind==='th'?'selected':''}>Таунхаус</option>
       </select>
     </div>
     <div class="field"><label>Спален</label>
@@ -1468,6 +1488,12 @@ function openProperty(pid) {
       <datalist id="agents-list-prop">${(state.agents||[]).map(a=>`<option value="${a}">`).join('')}</datalist>
     </div>
     <div class="field"><label>Телефон агента</label><input type="tel" value="${p.agentPhone||state.agentPhones?.[p.agent]||''}" onchange="updProp('${p.id}','agentPhone',this.value)" placeholder="+7"></div>
+    ${state.user.role === 'Директор' ? `
+      <div class="card" style="background: rgba(127,119,221,.1); padding: 12px; margin-bottom: 12px;">
+        <p class="meta" style="margin: 0 0 8px; color: #7F77DD; font-size: 11px;">🔒 ПРИВАТНО · только для директора</p>
+        <div class="field" style="margin-bottom: 8px;"><label>Имя собственника</label><input value="${p.ownerName||''}" onchange="updProp('${p.id}','ownerName',this.value)" placeholder="ФИО"></div>
+        <div class="field" style="margin-bottom: 0;"><label>Телефон собственника</label><input type="tel" value="${p.ownerPhone||''}" onchange="updProp('${p.id}','ownerPhone',this.value)" placeholder="+7"></div>
+      </div>` : ''}
     <div class="field"><label>Описание</label><textarea onchange="updProp('${p.id}','note',this.value)">${p.note||''}</textarea></div>
     <div class="field"><label>Ближайшее событие (в календарь)</label>
       <input type="datetime-local" value="${p.nextEvent?p.nextEvent.slice(0,16):''}" onchange="updProp('${p.id}','nextEvent', this.value?new Date(this.value).toISOString():null)">
@@ -1607,13 +1633,11 @@ function buildPropertyHtml(p) {
         <div class="row"><div class="l">Район</div><div class="v">${p.district||'—'}</div></div>
         <div class="row"><div class="l">Ремонт</div><div class="v">${({cosmetic:'Косметический',euro:'Евро',design:'Дизайнерский'})[p.reno]||'—'}</div></div>
         <div class="row"><div class="l">Застройщик</div><div class="v">${p.developer||'—'}</div></div>
-        <div class="row"><div class="l">Комиссия</div><div class="v">${p.commission||'—'}</div></div>
       </div>
       ${p.note?`<div class="note">${p.note}</div>`:''}
       <div class="agent">
-        <div style="font-weight:600;">${state.user.name}</div>
-        <div>${state.user.role} · ${state.user.city}</div>
-        <div>${state.user.phone||''}</div>
+        <div style="font-weight:600;">Каталог Сочи</div>
+        <div style="color:#888;">каталог-сочи.рф</div>
       </div>
     </body></html>`;
 }
@@ -1719,7 +1743,7 @@ function addProperty() {
       <datalist id="np-complex-list">${complexes.map(c=>`<option value="${c}">`).join('')}</datalist>
     </div>
     <div class="field"><label>Название/№ объекта</label><input id="np-title" placeholder="кв.142"></div>
-    <div class="field"><label>Тип</label><select id="np-kind"><option value="new">Новостройка</option><option value="flat">Квартира</option><option value="house">Дом / коттедж</option><option value="th">Таунхаус</option></select></div>
+    <div class="field"><label>Тип</label><select id="np-kind"><option value="new">Новостройка</option><option value="flat">Квартира</option><option value="house">Дом / коттедж</option></select></div>
     <div class="field"><label>Спален</label>
       <select id="np-bedrooms">
         <option value="">— не задано —</option>
@@ -1898,6 +1922,131 @@ function exportData() {
   a.click();
   URL.revokeObjectURL(url);
 }
+function parseCsv(text) {
+  // убираем BOM
+  text = text.replace(/^﻿/, '');
+  const rows = [];
+  let cur = [], cell = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"' && text[i+1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') inQuotes = false;
+      else cell += ch;
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ';' || ch === ',' || ch === '\t') { cur.push(cell); cell = ''; }
+      else if (ch === '\n') { cur.push(cell); rows.push(cur); cur = []; cell = ''; }
+      else if (ch === '\r') { /* skip */ }
+      else cell += ch;
+    }
+  }
+  if (cell || cur.length) { cur.push(cell); rows.push(cur); }
+  return rows;
+}
+function pickFile(accept) {
+  return new Promise(resolve => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = accept;
+    inp.onchange = e => { const f = e.target.files[0]; if (f) f.text().then(resolve); };
+    inp.click();
+  });
+}
+async function importClientsXls() {
+  alert('Выберите CSV или XLS-файл с клиентами.\nЗаголовки колонок (первая строка): Имя; Телефон; Статус; Запрос; Тип; Бюджет млн; Район; Ответственный');
+  const text = await pickFile('.csv,.xls,.tsv,text/csv,text/tab-separated-values');
+  if (!text) return;
+  const rows = parseCsv(text);
+  if (rows.length < 2) { alert('Файл пустой или нет заголовков'); return; }
+  const head = rows[0].map(s => s.trim().toLowerCase());
+  const col = (n) => head.findIndex(h => h.includes(n));
+  const idxName = col('имя') !== -1 ? col('имя') : col('фио');
+  const idxPhone = col('телефон');
+  const idxStatus = col('статус');
+  const idxRequest = col('запрос');
+  const idxType = col('тип');
+  const idxBudget = col('бюджет');
+  const idxArea = col('район');
+  const idxResp = col('ответствен');
+  if (idxName === -1) { alert('Не нашёл колонку «Имя»'); return; }
+  const statusMap = { 'подбор':'new','показ':'show','задаток':'zadatok','сделка':'deal','vip':'vip','инвестор':'investor','горячий':'hot','долгий':'long','клиент':'client','холодный':'cold','завершён':'done','архив':'archive' };
+  let added = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[idxName]) continue;
+    const statusRaw = (r[idxStatus]||'').toLowerCase().trim();
+    const budgetRaw = r[idxBudget];
+    const obj = {
+      id: id(),
+      name: r[idxName].trim(),
+      phone: idxPhone !== -1 ? (r[idxPhone]||'').trim() : '',
+      status: statusMap[statusRaw] || 'new',
+      requestComment: idxRequest !== -1 ? (r[idxRequest]||'').trim() : '',
+      type: idxType !== -1 ? (r[idxType]||'').trim() : '',
+      budgetMln: budgetRaw ? +String(budgetRaw).replace(/[^\d.]/g,'') || null : null,
+      area: idxArea !== -1 ? (r[idxArea]||'').trim() : '',
+      responsible: idxResp !== -1 && r[idxResp] ? r[idxResp].trim() : state.user.name,
+      note: '', nextContact: null, nextAction: '', created: new Date().toISOString(),
+    };
+    ensureAgent(obj.responsible);
+    state.clients.unshift(obj);
+    queuePush('client', obj);
+    added++;
+  }
+  saveState(state); render();
+  alert('Импортировано клиентов: ' + added);
+}
+async function importPropsXls() {
+  alert('Выберите CSV или XLS-файл с объектами.\nЗаголовки: ЖК; Объект; Тип; Спален; Площадь; Цена; Комиссия; Район; Застройщик; Ремонт');
+  const text = await pickFile('.csv,.xls,.tsv,text/csv');
+  if (!text) return;
+  const rows = parseCsv(text);
+  if (rows.length < 2) { alert('Файл пустой'); return; }
+  const head = rows[0].map(s => s.trim().toLowerCase());
+  const col = (n) => head.findIndex(h => h.includes(n));
+  const idxComplex = col('жк');
+  const idxTitle = col('объект') !== -1 ? col('объект') : col('название');
+  const idxKind = col('тип');
+  const idxBeds = col('спал');
+  const idxArea = col('площадь');
+  const idxPrice = col('цена');
+  const idxComm = col('комисс');
+  const idxDist = col('район');
+  const idxDev = col('застройщ');
+  const idxReno = col('ремонт');
+  if (idxComplex === -1) { alert('Не нашёл колонку «ЖК»'); return; }
+  const kindMap = { 'новостройка':'new','квартира':'flat','дом':'house','коттедж':'house' };
+  const renoMap = { 'косметический':'cosmetic','евро':'euro','евроремонт':'euro','дизайнерский':'design' };
+  let added = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[idxComplex]) continue;
+    const obj = {
+      id: id(),
+      complex: r[idxComplex].trim(),
+      title: idxTitle !== -1 ? (r[idxTitle]||'—').trim() : '—',
+      kind: kindMap[(r[idxKind]||'').toLowerCase().trim()] || 'new',
+      bedrooms: idxBeds !== -1 && r[idxBeds] ? parseBedrooms(r[idxBeds]) : null,
+      reno: renoMap[(r[idxReno]||'').toLowerCase().trim()] || '',
+      area: idxArea !== -1 ? (r[idxArea]||'').trim() : '',
+      price: idxPrice !== -1 && r[idxPrice] ? +String(r[idxPrice]).replace(/[^\d]/g,'') || 0 : 0,
+      commission: idxComm !== -1 ? (r[idxComm]||'').trim() : '',
+      district: idxDist !== -1 ? (r[idxDist]||'').trim() : '',
+      developer: idxDev !== -1 ? (r[idxDev]||'').trim() : '',
+      note: '', photos: [],
+      agent: state.user.name,
+      agentPhone: state.user.phone || '',
+      ownerName: '', ownerPhone: '',
+      createdAt: new Date().toISOString(),
+    };
+    state.properties.unshift(obj);
+    queuePush('property', obj);
+    added++;
+  }
+  saveState(state); render();
+  alert('Импортировано объектов: ' + added);
+}
+
 function importData() {
   if (!confirm('Восстановление перезапишет текущие данные. Продолжить?')) return;
   const inp = document.createElement('input');
@@ -1976,6 +2125,9 @@ function copyRef() {
 }
 
 function go(r) {
+  if (route !== r) {
+    history.pushState({ route: r, crmTab }, '', '#' + r);
+  }
   route = r;
   try { localStorage.setItem(ROUTE_KEY, r); } catch(e) {}
   render();
@@ -2215,6 +2367,30 @@ function dealFromDB(r) {
     expenses: r.expenses || 0, received: r.received || 0, note: r.note || '',
   };
 }
+function partnerDealToDB(d) {
+  return {
+    id: d.id, object_text: d.object, partner_name: d.partner,
+    sum_total: d.sum || null, commission: d.commission || null,
+    my_share_pct: d.mySharePct || 50, status: d.status || 'pending',
+    agent_id: currentAgentRow?.id || null,
+  };
+}
+function partnerDealFromDB(r) {
+  return {
+    id: r.id, object: r.object_text, partner: r.partner_name,
+    sum: r.sum_total || 0, commission: r.commission || 0,
+    mySharePct: r.my_share_pct || 50, status: r.status || 'pending',
+  };
+}
+function referralToDB(r) {
+  return {
+    id: r.id, inviter_id: currentAgentRow?.id || null,
+    invitee_name: r.name, amount: r.amount, paid_at: r.when,
+  };
+}
+function referralFromDB(r) {
+  return { id: r.id, name: r.invitee_name, amount: r.amount, when: r.paid_at };
+}
 function agentToDB(name, phone, role) {
   return { name, phone, role, city: state.user.city || 'Сочи' };
 }
@@ -2297,16 +2473,29 @@ async function syncPullAll() {
   if (!supa || !currentAgentRow) return;
   syncStatus = 'syncing'; renderTopbar();
   try {
-    const [cl, pr, tk, dl] = await Promise.all([
+    const [cl, pr, tk, dl, pd, rf] = await Promise.all([
       supa.from('clients').select('*'),
       supa.from('properties').select('*'),
       supa.from('tasks').select('*'),
       supa.from('deals').select('*'),
+      supa.from('partner_deals').select('*'),
+      supa.from('referrals').select('*'),
     ]);
     if (cl.data) state.clients = cl.data.map(clientFromDB);
-    if (pr.data) state.properties = pr.data.map(propFromDB);
+    if (pr.data) {
+      // сохраняем локальные фото (они пока не в БД)
+      const localPhotos = {};
+      state.properties.forEach(p => { if (p.photos && p.photos.length) localPhotos[p.id] = p.photos; });
+      state.properties = pr.data.map(r => {
+        const p = propFromDB(r);
+        if (localPhotos[p.id]) p.photos = localPhotos[p.id];
+        return p;
+      });
+    }
     if (tk.data) state.tasks = tk.data.map(taskFromDB);
     if (dl.data) state.deals = dl.data.map(dealFromDB);
+    if (pd.data) state.partnerDeals = pd.data.map(partnerDealFromDB);
+    if (rf.data) state.referrals = rf.data.map(referralFromDB);
     // собираем список агентов
     const { data: agents } = await supa.from('agents').select('name, phone');
     if (agents) {
@@ -2331,8 +2520,8 @@ async function flushPush() {
   if (!supa || pushQueue.size === 0) return;
   const items = Array.from(pushQueue.values());
   pushQueue.clear();
-  const mappers = { client: clientToDB, property: propToDB, task: taskToDB, deal: dealToDB };
-  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals' };
+  const mappers = { client: clientToDB, property: propToDB, task: taskToDB, deal: dealToDB, partner: partnerDealToDB, referral: referralToDB };
+  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', partner: 'partner_deals', referral: 'referrals' };
   let okCount = 0, errCount = 0;
   for (const { type, obj } of items) {
     try {
@@ -2346,7 +2535,7 @@ async function flushPush() {
 }
 async function syncDelete(type, recordId) {
   if (!supa || !currentAgentRow) return;
-  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals' };
+  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', partner: 'partner_deals', referral: 'referrals' };
   syncStatus = 'syncing'; renderTopbar();
   const { error } = await supa.from(tables[type]).delete().eq('id', recordId);
   syncStatus = error ? 'error' : 'synced';
@@ -2400,6 +2589,8 @@ async function pushAllLocal() {
     if (state.properties.length) await supa.from('properties').upsert(state.properties.map(propToDB));
     if (state.tasks.length) await supa.from('tasks').upsert(state.tasks.map(taskToDB));
     if (state.deals.length) await supa.from('deals').upsert(state.deals.map(dealToDB));
+    if (state.partnerDeals.length) await supa.from('partner_deals').upsert(state.partnerDeals.map(partnerDealToDB));
+    if (state.referrals.length) await supa.from('referrals').upsert(state.referrals.map(referralToDB));
     syncStatus = 'synced';
     alert('Локальные данные загружены в облако');
   } catch (e) { console.error(e); syncStatus = 'error'; alert('Ошибка: ' + e.message); }
@@ -2412,6 +2603,26 @@ if (window.Telegram && window.Telegram.WebApp) {
   tg.ready(); tg.expand();
   if (tg.colorScheme) setTheme(tg.colorScheme);
 }
+
+/* ============================== HISTORY / BACK ============================== */
+window.addEventListener('popstate', e => {
+  // Если открыта модалка — закроем её, не уходя со страницы
+  const modal = document.getElementById('modalBg');
+  if (modal && modal.classList.contains('open')) {
+    closeModal();
+    history.pushState({ route, crmTab }, '', location.hash || '#' + route);
+    return;
+  }
+  // Восстановить роут из state
+  const st = e.state;
+  if (st && st.route) {
+    route = st.route;
+    if (st.crmTab) crmTab = st.crmTab;
+    render();
+  }
+});
+// заменяем "уход" из приложения на возврат на главную
+history.replaceState({ route, crmTab }, '', location.hash || '#' + route);
 
 /* ============================== INIT ============================== */
 render();
