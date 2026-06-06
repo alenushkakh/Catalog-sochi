@@ -406,6 +406,8 @@ function loadState() {
       if (!s.deals) s.deals = [];
       if (s.user && s.user.onlyMine === undefined) s.user.onlyMine = (s.user.role === 'Агент');
       if (s.agents) s.agents = [...new Set(s.agents.filter(Boolean))];
+      // партнёрка убрана полностью — рефералы оставляем (только read)
+      s.partnerDeals = [];
       // конвертируем не-UUID ID в UUID (для совместимости с Supabase)
       const isUuid = x => typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
       ['clients','properties','tasks','deals','partnerDeals','referrals'].forEach(k => {
@@ -1279,18 +1281,37 @@ function viewProfile() {
       <button class="btn ghost" onclick="go('finance')">Сделки</button>
     </div>
 
+    <div class="section-h">Реферальная программа</div>
+    <div class="card" style="padding: 14px;">
+      <p class="meta" style="margin: 0 0 8px;">Баланс</p>
+      <div style="font-size: 22px; font-weight: 600; color: var(--accent); margin-bottom: 4px;">${fmtMoney(state.referrals.reduce((s,r)=>s+(r.amount||0),0))}</div>
+      <p class="meta" style="margin: 0 0 12px; font-size: 11px;">${state.referrals.length === 0 ? 'Начислений пока нет. Деньги поступят после оплаты подписки приглашёнными агентами.' : state.referrals.length + ' начислений'}</p>
+      <p class="meta" style="margin: 0 0 4px;">Ваша ссылка</p>
+      <div style="color: var(--accent); word-break: break-all; font-size: 12px; padding: 8px; background: var(--surface-2); border-radius: 8px;">https://t.me/catalog_sochi_bot?ref=${state.user.refCode}</div>
+      <button class="btn ghost" style="margin-top: 8px;" onclick="copyRef()">Скопировать ссылку</button>
+      ${state.referrals.length > 0 ? `
+        <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--row-border);">
+          <p class="meta" style="margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .3px;">История</p>
+          ${state.referrals.map(r => `
+            <div class="list-item" style="padding: 8px 0;">
+              <div style="flex:1;">
+                <div style="font-size: 13px;">${r.name}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">${fmtDate(r.when)}</div>
+              </div>
+              <div style="color: var(--success); font-weight: 600;">+${fmtMoney(r.amount)}</div>
+            </div>
+          `).join('')}
+        </div>` : ''}
+    </div>
+
     <div class="section-h">Облако (синхронизация)</div>
     <div class="card" style="padding: 14px;">
       ${state.user.cloudConnected && currentAgentRow ? `
         <p class="meta" style="margin:0 0 4px;">Вход: <strong style="color:var(--text);">${state.user.email||currentAgentRow.name}</strong></p>
         <p class="meta" style="margin:0 0 10px; color: ${syncStatus==='synced'?'var(--success)':syncStatus==='error'?'var(--danger)':'var(--accent)'};">
-          ${syncStatus==='synced'?'● Синхронизировано':syncStatus==='syncing'?'● Синхронизация...':syncStatus==='error'?'● Ошибка':'● Не подключено'}
+          ${syncStatus==='synced'?'● Синхронизировано · автоматически':syncStatus==='syncing'?'● Синхронизация...':syncStatus==='error'?'● Ошибка — тапните по точке вверху':'● Не подключено'}
         </p>
-        <div class="btn-row">
-          <button class="btn" onclick="syncPullAll()">Обновить</button>
-          <button class="btn ghost" onclick="pushAllLocal()">Залить локальные</button>
-        </div>
-        <button class="btn ghost" style="margin-top:8px;" onclick="cloudSignOut()">Выйти из облака</button>
+        <button class="btn ghost" onclick="cloudSignOut()">Выйти из облака</button>
       ` : `
         <p class="meta" style="margin:0 0 10px;">Войдите чтобы данные были на всех устройствах и не пропадали.</p>
         <button class="btn" onclick="openCloudLogin()">Войти / Регистрация</button>
@@ -1302,7 +1323,7 @@ function viewProfile() {
     <div class="card" style="padding: 14px;">
       <p class="meta" style="margin:0 0 10px;">Текущий: <strong style="color:var(--text);">${state.user.name}</strong> · ${state.user.role}</p>
       <div class="btn-row">
-        <button class="btn ghost" onclick="switchAgent()">Управление</button>
+        <button class="btn ghost" onclick="switchAgent()">Список сотрудников</button>
         <button class="btn" onclick="registerAgent()">+ Сотрудник</button>
       </div>
     </div>` : ''}
@@ -2204,26 +2225,53 @@ function switchAgent() {
   const agents = [...new Set((state.agents || []).filter(Boolean))];
   state.agents = agents;
   saveState(state);
-  if (!agents.length) { alert('Список агентов пуст. Зарегистрируйте нового.'); return; }
+  if (!agents.length) { alert('Список сотрудников пуст. Зарегистрируйте нового.'); return; }
+  const stats = agents.map(a => ({
+    name: a,
+    role: a === state.user.name ? state.user.role : 'Агент',
+    phone: state.agentPhones?.[a] || '',
+    clients: state.clients.filter(c => c.responsible === a).length,
+    properties: state.properties.filter(p => p.agent === a).length,
+  }));
   openModal(`
-    <h2>Агенты</h2>
-    <p class="meta" style="margin-bottom: 12px;">Тап по имени — переключиться. Карандашик — редактировать. ×  — уволить.</p>
-    ${agents.map(a => `
-      <div class="card" style="${a===state.user.name?'border-left: 3px solid var(--accent);':''}">
+    <h2>Сотрудники</h2>
+    <p class="meta" style="margin-bottom: 12px;">Всего: ${stats.length}</p>
+    ${stats.map(s => `
+      <div class="card" style="${s.name===state.user.name?'border-left: 3px solid var(--accent);':''}">
         <div class="card-row">
-          <div style="flex:1; cursor: pointer;" onclick="doSwitchAgent('${a.replace(/'/g,"\\'")}')">
-            <h3>${a}</h3>
-            <p class="meta">${a===state.user.name?'Текущий · ':''}${state.clients.filter(c=>c.responsible===a).length} клиентов</p>
+          <div style="flex:1; min-width: 0;">
+            <h3>${s.name}${s.name===state.user.name?' <span style="color:var(--accent); font-size:11px;">· Вы</span>':''}</h3>
+            <p class="meta">${s.role}${s.phone?' · '+s.phone:''}</p>
+            <p class="meta" style="margin-top: 4px;">
+              <span style="color: var(--text);">${s.clients}</span> клиентов ·
+              <span style="color: var(--text);">${s.properties}</span> объектов
+            </p>
           </div>
-          <div style="display:flex; gap: 4px;">
-            <button class="icon-btn" onclick="renameAgent('${a.replace(/'/g,"\\'")}')" title="Переименовать">✎</button>
-            <button class="icon-btn" style="color: var(--danger);" onclick="fireAgent('${a.replace(/'/g,"\\'")}')" title="Уволить">×</button>
+          <div style="display:flex; gap: 4px; flex-shrink: 0;">
+            <button class="icon-btn" onclick="renameAgent('${s.name.replace(/'/g,"\\'")}')" title="Переименовать">✎</button>
+            ${s.name !== state.user.name ? `<button class="icon-btn" style="color: var(--danger);" onclick="fireAgent('${s.name.replace(/'/g,"\\'")}')" title="Удалить">×</button>` : ''}
           </div>
         </div>
       </div>`).join('')}
-    <button class="btn ghost" onclick="closeModal(); registerAgent()" style="margin-top: 12px;">+ Зарегистрировать нового</button>
-    <button class="btn ghost" onclick="cleanupAgents()" style="margin-top: 8px;">Удалить дубликаты</button>
+    <div class="btn-row" style="margin-top: 12px;">
+      <button class="btn" onclick="closeModal(); registerAgent()">+ Сотрудник</button>
+      <button class="btn ghost" onclick="exportAgentsXls()">Excel</button>
+    </div>
   `);
+}
+function exportAgentsXls() {
+  const agents = [...new Set((state.agents||[]).filter(Boolean))];
+  const rows = [['Имя','Роль','Телефон','Клиентов','Объектов']];
+  agents.forEach(a => {
+    rows.push([
+      a,
+      a === state.user.name ? state.user.role : 'Агент',
+      state.agentPhones?.[a] || '',
+      state.clients.filter(c => c.responsible === a).length,
+      state.properties.filter(p => p.agent === a).length,
+    ]);
+  });
+  downloadXls('agents-sochi', rows);
 }
 function cleanupAgents() {
   const before = (state.agents||[]).length;
@@ -2278,13 +2326,6 @@ function fireAgent(name) {
   state.agents = (state.agents||[]).filter(a => a !== name);
   saveState(state);
   switchAgent();
-}
-function doSwitchAgent(name) {
-  state.user.name = name;
-  state.user.onlyMine = state.user.role === 'Агент';
-  saveState(state);
-  closeModal();
-  go('home');
 }
 
 function registerAgent() {
@@ -2506,12 +2547,11 @@ async function syncPullAll() {
   if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; await flushPush(); }
   syncStatus = 'syncing'; renderTopbar();
   try {
-    const [cl, pr, tk, dl, pd, rf] = await Promise.all([
+    const [cl, pr, tk, dl, rf] = await Promise.all([
       supa.from('clients').select('*'),
       supa.from('properties').select('*'),
       supa.from('tasks').select('*'),
       supa.from('deals').select('*'),
-      supa.from('partner_deals').select('*'),
       supa.from('referrals').select('*'),
     ]);
     // MERGE стратегия: серверные данные имеют приоритет, локальные «лишние» пушим в облако
@@ -2535,8 +2575,8 @@ async function syncPullAll() {
     }
     if (tk.data) state.tasks = mergeLists(state.tasks, tk.data, taskFromDB, 'task');
     if (dl.data) state.deals = mergeLists(state.deals, dl.data, dealFromDB, 'deal');
-    if (pd.data) state.partnerDeals = mergeLists(state.partnerDeals, pd.data, partnerDealFromDB, 'partner');
-    if (rf.data) state.referrals = mergeLists(state.referrals, rf.data, referralFromDB, 'referral');
+    // рефералы — только чтение, не критично если упадёт
+    if (rf && !rf.error && rf.data) state.referrals = rf.data.map(referralFromDB);
     const { data: agents } = await supa.from('agents').select('name, phone');
     if (agents) {
       state.agents = [...new Set(agents.map(a => a.name).filter(Boolean))];
@@ -2560,8 +2600,8 @@ async function flushPush() {
   if (!supa || pushQueue.size === 0) return;
   const items = Array.from(pushQueue.values());
   pushQueue.clear();
-  const mappers = { client: clientToDB, property: propToDB, task: taskToDB, deal: dealToDB, partner: partnerDealToDB, referral: referralToDB };
-  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', partner: 'partner_deals', referral: 'referrals' };
+  const mappers = { client: clientToDB, property: propToDB, task: taskToDB, deal: dealToDB };
+  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals' };
   let okCount = 0, errCount = 0, lastError = null, lastType = '';
   for (const { type, obj } of items) {
     try {
