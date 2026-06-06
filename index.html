@@ -210,7 +210,7 @@ body { overscroll-behavior-y: contain; }
 .task-text.done { text-decoration: line-through; color: var(--text-muted); }
 
 .cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 6px; }
-.cal-head div { text-align: center; font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+.cal-head div { text-align: center; font-size: 13px; font-weight: 600; color: var(--text); padding: 6px 0; text-transform: uppercase; letter-spacing: .3px; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .cal-day { aspect-ratio: 1; display:flex; align-items:center; justify-content:center; font-size: 14px; border-radius: 8px; position: relative; cursor: pointer; }
 .cal-day.muted { color: var(--text-muted); opacity: .5; }
@@ -339,7 +339,8 @@ const SUPABASE_KEY = 'sb_publishable_0atPwLPgiiSWzS9iOFcDmw_3iBfJ3LC';
 let supa = null;
 let currentAgentRow = null;
 let syncStatus = 'offline'; // offline | syncing | synced | error
-let pushQueue = new Map(); // {type:id => entityObj}
+let syncLastError = '';
+let pushQueue = new Map();
 let pushTimer = null;
 const defaultState = () => ({
   theme: 'dark',
@@ -414,6 +415,7 @@ function loadState() {
         if (c.responsible === undefined) c.responsible = s.user?.name || 'Алёна';
         if (c.nextAction === undefined) c.nextAction = '';
         if (c.requestComment === undefined) c.requestComment = '';
+        if (c.priority === undefined) c.priority = false;
         if (c.clientType && (c.status === 'new' || !c.status)) c.status = c.clientType;
         delete c.clientType;
         // если budgetMln нет, но есть текстовый — парсим
@@ -511,7 +513,7 @@ const isOverdue = (iso) => iso && new Date(iso) < new Date() && !isSameDay(new D
 const STATUSES = ['hot','vip','investor','client','long','cold','new','show','zadatok','deal','done','archive'];
 const statusLabel = (s) => ({
   new:'Подбор', show:'Показ', zadatok:'Задаток', deal:'Сделка',
-  vip:'VIP', investor:'Инвестор', hot:'Горячий', long:'Долгий',
+  vip:'VIP', investor:'Инвестор', hot:'🔥 Горячий', long:'Долгий',
   client:'Клиент', cold:'Холодный',
   done:'Завершён', archive:'Архив'
 })[s] || s;
@@ -550,7 +552,7 @@ function render() {
   renderContent();
   renderNav();
   renderSidebar();
-  document.getElementById('fab').style.display = ['crm','clients','properties','tasks'].includes(route) ? 'flex' : 'none';
+  document.getElementById('fab').style.display = ['crm','clients','properties','tasks','finance'].includes(route) ? 'flex' : 'none';
 }
 
 function renderSidebar() {
@@ -563,9 +565,7 @@ function renderSidebar() {
     <button class="nav-item ${route==='properties'?'active':''}" onclick="go('properties')"><span class="ico">▦</span><span>Объекты</span></button>
     <button class="nav-item ${route==='clients'?'active':''}" onclick="go('clients')"><span class="ico">☺</span><span>Клиенты</span></button>
     <button class="nav-item ${route==='crm'?'active':''}" onclick="go('crm')"><span class="ico">✓</span><span>Задачи</span></button>
-    <div class="sidebar-section">Финансы</div>
-    <button class="nav-item ${route==='finance' && financeTab==='deals'?'active':''}" onclick="financeTab='deals'; go('finance')"><span class="ico">⚐</span><span>Сделки</span></button>
-    <button class="nav-item ${route==='finance' && financeTab==='partner'?'active':''}" onclick="financeTab='partner'; go('finance')"><span class="ico">⚹</span><span>Партнерка</span></button>
+    <button class="nav-item ${route==='finance'?'active':''}" onclick="go('finance')"><span class="ico">⚐</span><span>Сделки</span></button>
     <div style="margin-top: auto;">
       <button class="nav-item ${route==='profile'?'active':''}" onclick="go('profile')"><span class="ico">◉</span><span>Профиль</span></button>
     </div>
@@ -583,14 +583,16 @@ function renderTopbar() {
   };
   const cur = titles[route] || titles.home;
   const syncColor = { synced:'var(--success)', syncing:'var(--accent)', error:'var(--danger)', offline:'var(--text-muted)' }[syncStatus];
-  const syncTitle = { synced:'Синхронизировано', syncing:'Синхронизация...', error:'Ошибка синхронизации', offline:'Локальный режим' }[syncStatus];
+  const pendingCount = pushQueue.size;
+  const syncTitle = pendingCount > 0 ? ('Ожидает отправки: ' + pendingCount) :
+    { synced:'Синхронизировано', syncing:'Синхронизация...', error:'Ошибка синхронизации', offline:'Локальный режим' }[syncStatus];
   document.getElementById('topbar').innerHTML = `
     <div>
       <h1>${cur.t}</h1>
       <div class="sub">${cur.s}</div>
     </div>
     <div style="display:flex; gap:6px; align-items:center;">
-      <button class="icon-btn" onclick="go('profile')" title="${syncTitle}" style="font-size: 18px; color: ${syncColor};">●</button>
+      <button class="icon-btn" onclick="${syncStatus==='error'?'showSyncError()':"go('profile')"}" title="${syncTitle}" style="font-size: 18px; color: ${syncColor};">●</button>
       <button class="icon-btn" onclick="toggleTheme()" aria-label="Тема">${state.theme==='dark'?'☀':'☾'}</button>
     </div>
   `;
@@ -653,13 +655,13 @@ function viewHome() {
         <div class="label">Активных клиентов</div>
         <div class="value">${activeClients.length}</div>
       </div>
-      <div class="kpi" onclick="financeTab='deals'; go('finance')" style="cursor:pointer;">
+      <div class="kpi" onclick="go('finance')" style="cursor:pointer;">
         <div class="label">Сделки · осталось</div>
         <div class="value" style="color:var(--accent);">${fmtMoneyShort(dealsTotal)}</div>
       </div>
-      <div class="kpi" onclick="financeTab='partner'; go('finance')" style="cursor:pointer;">
-        <div class="label">Партнерка · баланс</div>
-        <div class="value" style="color:var(--success);">${fmtMoneyShort(refTotal)}</div>
+      <div class="kpi" onclick="${overdue.length?"goCrm('tasks')":''}" style="cursor:pointer;">
+        <div class="label">Просрочено</div>
+        <div class="value" style="color:${overdue.length?'var(--danger)':'var(--text)'};">${overdue.length}</div>
       </div>
     </div>
 
@@ -690,10 +692,11 @@ function goCrm(tab) {
 function clientMiniRow(c) {
   const next = c.nextContact ? fmtDate(c.nextContact) + (c.nextAction?' · '+c.nextAction:'') : '';
   const showResp = state.user.role !== 'Агент' && c.responsible;
+  const priorityBg = c.priority ? 'background: rgba(250,199,117,.22);' : '';
   return `
-    <div class="client-mini" onclick="openClient('${c.id}')" style="border-left-color: ${statusStripe(c.status)};">
+    <div class="client-mini" onclick="openClient('${c.id}')" style="border-left-color: ${statusStripe(c.status)}; ${priorityBg}">
       <div class="cm-main">
-        <span class="cm-name">${c.name}${showResp?` <span style="color:var(--text-muted); font-weight:400;">· ${c.responsible}</span>`:''}</span>
+        <span class="cm-name">${c.priority?'⭐ ':''}${c.name}${showResp?` <span style="color:var(--text-muted); font-weight:400;">· ${c.responsible}</span>`:''}</span>
         <span class="cm-meta">${[c.type, budgetText(c)].filter(Boolean).join(' · ')}</span>
       </div>
       <span class="cm-next">${next}</span>
@@ -968,8 +971,8 @@ function renderClientRows(list) {
     <tbody>
       ${list.length === 0 ? `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:30px;">Нет клиентов</td></tr>` :
         list.map(c => `
-          <tr onclick="openClient('${c.id}')" style="cursor:pointer; border-left: 3px solid ${statusStripe(c.status)};">
-            <td><span class="avatar" style="width:24px; height:24px; font-size:10px; display:inline-flex; vertical-align:middle; margin-right:6px;">${initials(c.name)}</span>${c.name}</td>
+          <tr onclick="openClient('${c.id}')" style="cursor:pointer; border-left: 3px solid ${statusStripe(c.status)}; ${c.priority?'background: rgba(250,199,117,.12);':''}">
+            <td><span class="avatar" style="width:24px; height:24px; font-size:10px; display:inline-flex; vertical-align:middle; margin-right:6px;">${initials(c.name)}</span>${c.priority?'⭐ ':''}${c.name}</td>
             <td><span class="pill ${statusClass(c.status)}">${statusLabel(c.status)}</span></td>
             <td style="max-width: 200px; white-space: normal; font-size: 11px; color: var(--text-muted);">${(c.requestComment||'').slice(0,80)}</td>
             <td>${budgetText(c)}</td>
@@ -994,13 +997,7 @@ function viewCRM() {
 }
 let financeTab = 'deals';
 function viewFinance() {
-  return `
-    <div class="tabs">
-      <button class="tab ${financeTab==='deals'?'active':''}" onclick="financeTab='deals'; render()">Сделки</button>
-      <button class="tab ${financeTab==='partner'?'active':''}" onclick="financeTab='partner'; render()">Партнерка</button>
-    </div>
-    ${financeTab==='deals' ? crmDealsBody() : crmPartnerBody()}
-  `;
+  return crmDealsBody();
 }
 
 function crmClients() {
@@ -1279,19 +1276,7 @@ function viewProfile() {
 
     <div class="section-h">Финансы</div>
     <div class="card" style="padding: 14px;">
-      <div class="btn-row">
-        <button class="btn ghost" onclick="financeTab='deals'; go('finance')">Сделки</button>
-        <button class="btn ghost" onclick="financeTab='partner'; go('finance')">Партнерка</button>
-      </div>
-    </div>
-
-    <div class="section-h">Рефералы</div>
-    <div class="card">
-      <div class="card-row">
-        <div><h3>Баланс</h3><p class="meta">${state.referrals.length} начислений</p></div>
-        <div style="color:var(--accent); font-weight:600; font-size:18px;">${fmtMoney(refTotal)}</div>
-      </div>
-      <button class="btn ghost" style="margin-top:10px;" onclick="financeTab='partner'; go('finance')">Открыть рефералку →</button>
+      <button class="btn ghost" onclick="go('finance')">Сделки</button>
     </div>
 
     <div class="section-h">Облако (синхронизация)</div>
@@ -1358,7 +1343,10 @@ function viewProfile() {
         <span class="label">Импорт объектов</span><span class="val">.csv/.xls</span>
       </div>
       <div class="profile-row" onclick="exportData()">
-        <span class="label">Бэкап всех данных</span><span class="val">JSON</span>
+        <span class="label">Бэкап (компактный, без фото)</span><span class="val">JSON</span>
+      </div>
+      <div class="profile-row" onclick="exportDataFull()">
+        <span class="label">Бэкап ПОЛНЫЙ — с фото</span><span class="val">JSON</span>
       </div>
       <div class="profile-row" onclick="importData()">
         <span class="label">Восстановить из бэкапа</span><span class="val">JSON</span>
@@ -1399,6 +1387,13 @@ function openClient(cid) {
       <select onchange="updClient('${c.id}','status',this.value)">
         ${STATUSES.map(s=>`<option value="${s}" ${c.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}
       </select>
+    </div>
+    <div class="card" style="display:flex; align-items:center; justify-content: space-between; padding: 10px 14px;">
+      <div>
+        <div style="font-size: 14px;">⭐ Перспективный</div>
+        <div class="meta">Подсветить клиента жёлтым</div>
+      </div>
+      <input type="checkbox" ${c.priority?'checked':''} onchange="updClient('${c.id}','priority',this.checked)" style="width: 22px; height: 22px;">
     </div>
     <div class="field"><label>Ответственный</label>
       <input list="agents-list" value="${c.responsible||''}" onchange="updClient('${c.id}','responsible',this.value); ensureAgent(this.value)" placeholder="Имя агента">
@@ -1690,10 +1685,8 @@ function delTask(tid) {
 }
 
 function onFab() {
-  if (route === 'crm' && crmTab === 'tasks') return addTask();
-  if (route === 'crm' && crmTab === 'calendar') return addTask();
-  if (route === 'crm' && crmTab === 'deals') return addDeal();
-  if (route === 'crm' && crmTab === 'partner') return addPartner();
+  if (route === 'crm') return addTask();
+  if (route === 'finance') return addDeal();
   if (route === 'properties') return addProperty();
   if (route === 'clients') return addClient();
 }
@@ -1929,6 +1922,17 @@ function exportData() {
   a.href = url; a.download = 'crm-sochi-backup-' + new Date().toISOString().slice(0,10) + '.json';
   a.click();
   URL.revokeObjectURL(url);
+}
+function exportDataFull() {
+  // полный бэкап с фото — для переноса между устройствами
+  const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
+  const sizeMb = (blob.size / 1024 / 1024).toFixed(1);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'crm-sochi-FULL-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  setTimeout(()=>alert('Скачан полный бэкап (' + sizeMb + ' МБ). Отправьте файл себе через AirDrop / Telegram / Email и откройте на другом устройстве через «Восстановить из бэкапа».'), 200);
 }
 function parseCsv(text) {
   // убираем BOM
@@ -2196,7 +2200,10 @@ function confirmPayment() {
 }
 
 function switchAgent() {
-  const agents = state.agents || [];
+  // дедуп прямо перед показом и сохраняем результат
+  const agents = [...new Set((state.agents || []).filter(Boolean))];
+  state.agents = agents;
+  saveState(state);
   if (!agents.length) { alert('Список агентов пуст. Зарегистрируйте нового.'); return; }
   openModal(`
     <h2>Агенты</h2>
@@ -2215,7 +2222,15 @@ function switchAgent() {
         </div>
       </div>`).join('')}
     <button class="btn ghost" onclick="closeModal(); registerAgent()" style="margin-top: 12px;">+ Зарегистрировать нового</button>
+    <button class="btn ghost" onclick="cleanupAgents()" style="margin-top: 8px;">Удалить дубликаты</button>
   `);
+}
+function cleanupAgents() {
+  const before = (state.agents||[]).length;
+  state.agents = [...new Set((state.agents||[]).filter(Boolean))];
+  saveState(state);
+  alert('Удалено дубликатов: ' + (before - state.agents.length));
+  switchAgent();
 }
 function renameAgent(oldName) {
   openModal(`
@@ -2305,7 +2320,10 @@ function saveNewAgent() {
   saveState(state);
   closeModal();
   go('home');
-  setTimeout(()=>alert('Готово! Вы вошли как ' + name + '. Список клиентов пуст — добавьте первого через раздел Клиенты.'), 200);
+  const msg = role === 'Агент'
+    ? 'Готово! Вы вошли как ' + name + '. Список клиентов пуст — добавьте первого через раздел Клиенты.'
+    : 'Готово! Вы вошли как ' + name + ' (' + role + '). Видите всех клиентов агентства.';
+  setTimeout(()=>alert(msg), 200);
 }
 
 /* ============================== SUPABASE: MAPPERS ============================== */
@@ -2315,17 +2333,22 @@ function clientToDB(c) {
     request_comment: c.requestComment || null, type: c.type,
     budget_mln: c.budgetMln, area: c.area,
     next_contact: c.nextContact, next_action: c.nextAction,
-    note: c.note, responsible_name: c.responsible,
+    note: c.note ? (c.note + (c.priority ? ' [⭐priority]' : '')) : (c.priority ? '[⭐priority]' : ''),
+    responsible_name: c.responsible,
     responsible_agent_id: currentAgentRow?.id || null,
   };
 }
 function clientFromDB(r) {
+  const noteRaw = r.note || '';
+  const isPriority = noteRaw.includes('[⭐priority]');
   return {
     id: r.id, name: r.name, phone: r.phone, status: r.status || 'new',
     requestComment: r.request_comment || '', type: r.type || '',
     budgetMln: r.budget_mln, area: r.area || '',
     nextContact: r.next_contact, nextAction: r.next_action || '',
-    note: r.note || '', responsible: r.responsible_name || '',
+    note: noteRaw.replace(/\s*\[⭐priority\]/g, '').trim(),
+    priority: isPriority,
+    responsible: r.responsible_name || '',
     created: r.created_at,
   };
 }
@@ -2539,19 +2562,25 @@ async function flushPush() {
   pushQueue.clear();
   const mappers = { client: clientToDB, property: propToDB, task: taskToDB, deal: dealToDB, partner: partnerDealToDB, referral: referralToDB };
   const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', partner: 'partner_deals', referral: 'referrals' };
-  let okCount = 0, errCount = 0, lastError = null;
+  let okCount = 0, errCount = 0, lastError = null, lastType = '';
   for (const { type, obj } of items) {
     try {
       const { error } = await supa.from(tables[type]).upsert(mappers[type](obj));
-      if (error) { console.error('push '+type, error, obj); errCount++; lastError = error; }
+      if (error) { console.error('push '+type, error, obj); errCount++; lastError = error; lastType = type; }
       else okCount++;
-    } catch (e) { console.error(e); errCount++; lastError = e; }
+    } catch (e) { console.error(e); errCount++; lastError = e; lastType = type; }
   }
   syncStatus = errCount === 0 ? 'synced' : 'error';
   if (errCount > 0 && lastError) {
-    console.warn('Не удалось синхронизировать ' + errCount + ' записей. ' + (lastError.message || lastError));
+    syncLastError = '[' + lastType + '] ' + (lastError.message || JSON.stringify(lastError));
+  } else {
+    syncLastError = '';
   }
   renderTopbar();
+}
+function showSyncError() {
+  if (!syncLastError) { alert('Последняя синхронизация прошла без ошибок'); return; }
+  alert('Ошибка синхронизации:\n\n' + syncLastError + '\n\nЧасто помогает:\n1. Запустить supabase-fix-rls.sql в SQL Editor\n2. Проверить вход в облако\n3. Нажать «Обновить» в Профиле');
 }
 async function syncDelete(type, recordId) {
   if (!supa || !currentAgentRow) return;
@@ -2623,6 +2652,22 @@ if (window.Telegram && window.Telegram.WebApp) {
   tg.ready(); tg.expand();
   if (tg.colorScheme) setTheme(tg.colorScheme);
 }
+
+/* ============================== AUTO-SYNC ============================== */
+let lastSyncAt = 0;
+async function maybeAutoSync() {
+  if (!supa || !currentAgentRow) return;
+  // не чаще раза в 5 секунд
+  if (Date.now() - lastSyncAt < 5000) return;
+  lastSyncAt = Date.now();
+  await syncPullAll();
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') maybeAutoSync();
+});
+window.addEventListener('focus', maybeAutoSync);
+// дополнительно — раз в минуту в фоне если страница активна
+setInterval(() => { if (document.visibilityState === 'visible') maybeAutoSync(); }, 60000);
 
 /* ============================== HISTORY / BACK ============================== */
 window.addEventListener('popstate', e => {
