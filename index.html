@@ -406,8 +406,9 @@ function loadState() {
       if (!s.deals) s.deals = [];
       if (s.user && s.user.onlyMine === undefined) s.user.onlyMine = (s.user.role === 'Агент');
       if (s.agents) s.agents = [...new Set(s.agents.filter(Boolean))];
-      // партнёрка убрана полностью — рефералы оставляем (только read)
       s.partnerDeals = [];
+      if (!s.tgChats) s.tgChats = []; // [{id, title, chatId}]
+      if (!s.broadcasts) s.broadcasts = []; // [{id, propertyId, chatId, when, status, sentAt}]
       // конвертируем не-UUID ID в UUID (для совместимости с Supabase)
       const isUuid = x => typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
       ['clients','properties','tasks','deals','partnerDeals','referrals'].forEach(k => {
@@ -1273,12 +1274,31 @@ function viewProfile() {
         </div>
         <span class="pill ${subActive()?'s-new':'s-cold'}">${subActive()?'Активна':'Не активна'}</span>
       </div>
-      <button class="btn" style="margin-top:10px;" onclick="openPayment()">Оплатить ${SUBSCRIPTION_PRICE} ₽</button>
+      ${(() => {
+        const balance = state.referrals.reduce((s,r)=>s+(r.amount||0),0);
+        const canPayFromBalance = balance >= SUBSCRIPTION_PRICE;
+        return `
+          <button class="btn" style="margin-top:10px;" onclick="openPayment()">Оплатить ${SUBSCRIPTION_PRICE} ₽ через СБП</button>
+          <button class="btn ghost" style="margin-top:8px;" onclick="payFromBalance()" ${canPayFromBalance?'':'disabled style="opacity:.5;"'}>
+            Оплатить с баланса${canPayFromBalance ? '' : ` (нужно ${SUBSCRIPTION_PRICE-balance} ₽)`}
+          </button>
+          <p class="meta" style="margin-top: 6px; font-size: 11px;">Баланс рефералки: ${fmtMoney(balance)}</p>
+        `;
+      })()}
     </div>
 
     <div class="section-h">Финансы</div>
     <div class="card" style="padding: 14px;">
       <button class="btn ghost" onclick="go('finance')">Сделки</button>
+    </div>
+
+    <div class="section-h">Telegram-рассылка</div>
+    <div class="card" style="padding: 14px;">
+      <p class="meta" style="margin: 0 0 10px;">Каналы и чаты: <strong style="color:var(--text);">${state.tgChats.length}</strong> · Запланировано: <strong style="color:var(--text);">${state.broadcasts.filter(b=>b.status==='pending').length}</strong></p>
+      <div class="btn-row">
+        <button class="btn ghost" onclick="manageTgChats()">Каналы</button>
+        <button class="btn" onclick="manageBroadcasts()">Расписание</button>
+      </div>
     </div>
 
     <div class="section-h">Реферальная программа</div>
@@ -1475,10 +1495,11 @@ function openProperty(pid) {
         </label>
       ` : ''}
     </div>
-    <div class="btn-row" style="margin-bottom: 14px;">
+    <div class="btn-row" style="margin-bottom: 8px;">
       <button class="btn" onclick="shareProperty('${p.id}')">Поделиться</button>
       <button class="btn ghost" onclick="downloadPropertyPdf('${p.id}')">PDF</button>
     </div>
+    <button class="btn ghost" style="margin-bottom: 14px;" onclick="scheduleBroadcast('${p.id}')">📣 Запланировать в Telegram</button>
     <div class="field"><label>ЖК / Комплекс (обязательно)</label><input value="${p.complex||''}" onchange="updProp('${p.id}','complex',this.value)" placeholder="ЖК Морская симфония"></div>
     <div class="field"><label>Название/№ объекта</label><input value="${p.title||''}" onchange="updProp('${p.id}','title',this.value)" placeholder="кв.142"></div>
     <div class="field"><label>Тип</label>
@@ -2219,6 +2240,178 @@ function confirmPayment() {
   render();
   alert('Спасибо! Подписка активна до ' + fmtDate(state.user.subscriptionEnd));
 }
+function manageTgChats() {
+  const chats = state.tgChats || [];
+  openModal(`
+    <h2>Telegram-каналы и чаты</h2>
+    <p class="meta" style="margin-bottom: 14px;">Добавьте сюда чаты/каналы куда будете слать объявления. Бот должен быть там админом. chat_id можно узнать у @userinfobot или @getidsbot.</p>
+    ${chats.length ? chats.map((c, i) => `
+      <div class="card">
+        <div class="card-row">
+          <div style="flex:1; min-width: 0;">
+            <h3>${c.title || 'Без названия'}</h3>
+            <p class="meta" style="font-family: monospace;">${c.chatId}</p>
+          </div>
+          <button class="icon-btn" style="color: var(--danger);" onclick="delTgChat('${c.id}')">×</button>
+        </div>
+      </div>
+    `).join('') : '<div class="card"><p class="meta" style="margin:0;">Пока нет ни одного канала. Добавьте первый.</p></div>'}
+    <div style="margin-top: 14px;">
+      <div class="field"><label>Название (для вас)</label><input id="tc-title" placeholder="ЖК Сириус — обсуждение"></div>
+      <div class="field"><label>chat_id (число или @username)</label><input id="tc-chatid" placeholder="-1001234567890 или @mychannel"></div>
+      <button class="btn" onclick="addTgChat()">+ Добавить</button>
+    </div>
+  `);
+}
+function addTgChat() {
+  const title = (document.getElementById('tc-title').value || '').trim();
+  const chatId = (document.getElementById('tc-chatid').value || '').trim();
+  if (!chatId) { alert('Укажите chat_id'); return; }
+  const newChat = { id: id(), title: title || chatId, chatId };
+  state.tgChats.push(newChat);
+  saveState(state);
+  queuePush('tgchat', newChat);
+  manageTgChats();
+}
+function delTgChat(chatId) {
+  if (!confirm('Удалить канал из списка?')) return;
+  state.tgChats = state.tgChats.filter(c => c.id !== chatId);
+  saveState(state);
+  syncDelete('tgchat', chatId);
+  manageTgChats();
+}
+function scheduleBroadcast(propId) {
+  if (!state.tgChats.length) {
+    alert('Сначала добавьте хотя бы один Telegram-канал в Профиле → Telegram-рассылка → Каналы.');
+    return;
+  }
+  const p = state.properties.find(x => x.id === propId);
+  if (!p) return;
+  const now = new Date(); now.setMinutes(0,0,0); now.setHours(now.getHours()+1);
+  openModal(`
+    <h2>Запланировать рассылку</h2>
+    <p class="meta" style="margin-bottom: 14px;">Объект: <strong style="color:var(--text);">${p.complex} · ${p.title}</strong></p>
+    <div class="field"><label>Куда (можно несколько)</label>
+      <div style="background: var(--surface); border-radius: 10px; padding: 8px;">
+        ${state.tgChats.map(c => `
+          <label style="display:flex; align-items:center; gap: 10px; padding: 8px; cursor:pointer;">
+            <input type="checkbox" value="${c.id}" class="bc-chat" checked style="width:18px; height:18px;">
+            <div style="flex:1;">
+              <div style="font-size:14px;">${c.title}</div>
+              <div class="meta" style="font-family:monospace; font-size:11px;">${c.chatId}</div>
+            </div>
+          </label>
+        `).join('')}
+      </div>
+    </div>
+    <div class="field"><label>Когда отправить</label><input id="bc-when" type="datetime-local" value="${now.toISOString().slice(0,16)}"></div>
+    <div class="field"><label>Доп. текст (опционально)</label><textarea id="bc-note" placeholder="Эксклюзив, торг возможен…"></textarea></div>
+    <button class="btn" onclick="saveBroadcast('${propId}')">Запланировать</button>
+  `);
+}
+function saveBroadcast(propId) {
+  const checked = Array.from(document.querySelectorAll('.bc-chat:checked')).map(el => el.value);
+  if (!checked.length) { alert('Выберите хотя бы один канал'); return; }
+  const when = document.getElementById('bc-when').value;
+  const note = document.getElementById('bc-note').value;
+  if (!when) { alert('Укажите время'); return; }
+  const whenIso = new Date(when).toISOString();
+  const created = [];
+  checked.forEach(chatId => {
+    const b = {
+      id: id(),
+      propertyId: propId,
+      chatId,
+      when: whenIso,
+      note,
+      status: 'pending',
+      sentAt: null,
+      createdBy: state.user.name,
+    };
+    state.broadcasts.push(b);
+    queuePush('broadcast', b);
+    created.push(b);
+  });
+  saveState(state);
+  closeModal();
+  render();
+  alert('Запланировано: ' + checked.length + ' рассылок.\nКрон Supabase каждую минуту проверяет очередь и шлёт когда время пришло.');
+}
+async function sendBroadcastNow(bid) {
+  if (!supa) { alert('Нужен вход в облако'); return; }
+  const b = state.broadcasts.find(x => x.id === bid);
+  if (!b) return;
+  // ставим время в прошлое и сразу триггерим обработчик
+  b.when = new Date(Date.now() - 5000).toISOString();
+  b.status = 'pending';
+  saveState(state);
+  await supa.from('tg_broadcasts').update({ when_at: b.when, status: 'pending' }).eq('id', bid);
+  const { data, error } = await supa.rpc('process_tg_broadcasts');
+  if (error) { alert('Ошибка: ' + error.message); return; }
+  // подтянуть актуальный статус
+  await syncPullAll();
+  const updated = state.broadcasts.find(x => x.id === bid);
+  alert('Обработано: ' + data + ' рассылок. Статус этой: ' + (updated?.status || 'unknown') + (updated?.errorText ? '\n\n' + updated.errorText : ''));
+  manageBroadcasts();
+}
+function manageBroadcasts() {
+  const list = (state.broadcasts || []).slice().sort((a,b) => new Date(b.when) - new Date(a.when));
+  openModal(`
+    <h2>Расписание рассылок</h2>
+    <p class="meta" style="margin-bottom: 14px;">Всего: ${list.length}. Pending — ждёт отправки, sent — отправлено.</p>
+    ${list.length ? list.map(b => {
+      const p = state.properties.find(x => x.id === b.propertyId);
+      const ch = state.tgChats.find(x => x.id === b.chatId);
+      return `
+        <div class="card" style="border-left: 3px solid ${b.status==='sent'?'var(--success)':b.status==='failed'?'var(--danger)':'var(--accent)'};">
+          <div class="card-row">
+            <div style="flex:1; min-width: 0;">
+              <h3>${p ? (p.complex + ' · ' + p.title) : '— объект удалён —'}</h3>
+              <p class="meta">${ch ? ch.title : '— канал удалён —'} · ${fmtDateTime(b.when)}</p>
+              ${b.note ? `<p class="meta" style="margin-top:4px;">«${b.note}»</p>` : ''}
+            </div>
+            <div style="display:flex; gap: 4px; flex-direction: column; align-items: flex-end;">
+              <span class="pill ${b.status==='sent'?'s-new':b.status==='failed'?'s-overdue':'s-show'}" style="font-size:10px;">${b.status==='sent'?'Отправлено':b.status==='failed'?'Ошибка':'В очереди'}</span>
+              ${b.status==='pending' ? `<button class="icon-btn" style="font-size: 11px; padding: 2px 8px;" onclick="sendBroadcastNow('${b.id}')" title="Отправить сейчас">▶</button>` : ''}
+              <button class="icon-btn" style="color:var(--danger);" onclick="delBroadcast('${b.id}')">×</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('') : '<div class="card"><p class="meta" style="margin:0;">Рассылок пока нет.</p></div>'}
+  `);
+}
+function delBroadcast(bid) {
+  state.broadcasts = state.broadcasts.filter(b => b.id !== bid);
+  saveState(state);
+  syncDelete('broadcast', bid);
+  manageBroadcasts();
+}
+
+function payFromBalance() {
+  const balance = state.referrals.reduce((s,r)=>s+(r.amount||0),0);
+  if (balance < SUBSCRIPTION_PRICE) {
+    alert('Недостаточно средств на балансе. Не хватает: ' + (SUBSCRIPTION_PRICE - balance) + ' ₽');
+    return;
+  }
+  if (!confirm('Списать ' + SUBSCRIPTION_PRICE + ' ₽ с реферального баланса для оплаты подписки на 30 дней?')) return;
+  // фиксируем списание как отрицательную запись в рефералах
+  state.referrals.push({
+    id: id(),
+    name: 'Оплата подписки',
+    amount: -SUBSCRIPTION_PRICE,
+    when: new Date().toISOString(),
+  });
+  const end = new Date();
+  // если подписка уже активна — добавляем 30 дней к текущему сроку
+  const start = (state.user.subscriptionEnd && new Date(state.user.subscriptionEnd) > new Date())
+    ? new Date(state.user.subscriptionEnd) : end;
+  start.setDate(start.getDate() + 30);
+  state.user.subscriptionEnd = start.toISOString();
+  saveState(state);
+  render();
+  alert('Готово. Подписка активна до ' + fmtDate(state.user.subscriptionEnd) + '. Остаток баланса: ' + fmtMoney(state.referrals.reduce((s,r)=>s+(r.amount||0),0)));
+}
 
 function switchAgent() {
   // дедуп прямо перед показом и сохраняем результат
@@ -2463,6 +2656,44 @@ function referralToDB(r) {
 function referralFromDB(r) {
   return { id: r.id, name: r.invitee_name, amount: r.amount, when: r.paid_at };
 }
+function tgChatToDB(c) {
+  return {
+    id: c.id, title: c.title, chat_id: c.chatId,
+    created_by: currentAgentRow?.id || null,
+  };
+}
+function tgChatFromDB(r) {
+  return { id: r.id, title: r.title || r.chat_id, chatId: r.chat_id };
+}
+function broadcastToDB(b) {
+  // ключевой момент: в Supabase в chat_id кладём настоящий Telegram chat_id, а не локальный UUID канала
+  const ch = (state.tgChats||[]).find(c => c.id === b.chatId);
+  return {
+    id: b.id,
+    property_id: b.propertyId,
+    chat_id: ch ? ch.chatId : b.chatId, // если уже telegram id — оставим
+    when_at: b.when,
+    note: b.note || null,
+    status: b.status || 'pending',
+    sent_at: b.sentAt || null,
+    created_by: currentAgentRow?.id || null,
+  };
+}
+function broadcastFromDB(r) {
+  // обратно ищем локальный канал по telegram chat_id
+  const ch = (state.tgChats||[]).find(c => c.chatId === r.chat_id);
+  return {
+    id: r.id,
+    propertyId: r.property_id,
+    chatId: ch ? ch.id : r.chat_id,
+    when: r.when_at,
+    note: r.note || '',
+    status: r.status || 'pending',
+    sentAt: r.sent_at,
+    errorText: r.error_text,
+    createdBy: r.created_by,
+  };
+}
 function agentToDB(name, phone, role) {
   return { name, phone, role, city: state.user.city || 'Сочи' };
 }
@@ -2547,12 +2778,14 @@ async function syncPullAll() {
   if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; await flushPush(); }
   syncStatus = 'syncing'; renderTopbar();
   try {
-    const [cl, pr, tk, dl, rf] = await Promise.all([
+    const [cl, pr, tk, dl, rf, tch, tbr] = await Promise.all([
       supa.from('clients').select('*'),
       supa.from('properties').select('*'),
       supa.from('tasks').select('*'),
       supa.from('deals').select('*'),
       supa.from('referrals').select('*'),
+      supa.from('tg_chats').select('*'),
+      supa.from('tg_broadcasts').select('*'),
     ]);
     // MERGE стратегия: серверные данные имеют приоритет, локальные «лишние» пушим в облако
     function mergeLists(localList, serverList, mapper, pushType) {
@@ -2577,6 +2810,9 @@ async function syncPullAll() {
     if (dl.data) state.deals = mergeLists(state.deals, dl.data, dealFromDB, 'deal');
     // рефералы — только чтение, не критично если упадёт
     if (rf && !rf.error && rf.data) state.referrals = rf.data.map(referralFromDB);
+    // tg_chats и tg_broadcasts
+    if (tch && !tch.error && tch.data) state.tgChats = tch.data.map(tgChatFromDB);
+    if (tbr && !tbr.error && tbr.data) state.broadcasts = tbr.data.map(broadcastFromDB);
     const { data: agents } = await supa.from('agents').select('name, phone');
     if (agents) {
       state.agents = [...new Set(agents.map(a => a.name).filter(Boolean))];
@@ -2596,26 +2832,32 @@ function queuePush(type, obj) {
   clearTimeout(pushTimer);
   pushTimer = setTimeout(flushPush, 1000);
 }
+const failedPushTypes = new Set();
 async function flushPush() {
   if (!supa || pushQueue.size === 0) return;
   const items = Array.from(pushQueue.values());
   pushQueue.clear();
-  const mappers = { client: clientToDB, property: propToDB, task: taskToDB, deal: dealToDB };
-  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals' };
+  const mappers = { client: clientToDB, property: propToDB, task: taskToDB, deal: dealToDB, tgchat: tgChatToDB, broadcast: broadcastToDB };
+  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', tgchat: 'tg_chats', broadcast: 'tg_broadcasts' };
   let okCount = 0, errCount = 0, lastError = null, lastType = '';
   for (const { type, obj } of items) {
+    // если эта таблица ранее ругалась 3+ раз — не дёргаем больше до перезагрузки страницы
+    if (failedPushTypes.has(type)) continue;
     try {
       const { error } = await supa.from(tables[type]).upsert(mappers[type](obj));
-      if (error) { console.error('push '+type, error, obj); errCount++; lastError = error; lastType = type; }
-      else okCount++;
+      if (error) {
+        console.error('push '+type, error, obj);
+        errCount++; lastError = error; lastType = type;
+        // RLS не лечится повтором — помечаем как «битую»
+        if (String(error.message||'').includes('row-level security')) failedPushTypes.add(type);
+      } else okCount++;
     } catch (e) { console.error(e); errCount++; lastError = e; lastType = type; }
   }
-  syncStatus = errCount === 0 ? 'synced' : 'error';
-  if (errCount > 0 && lastError) {
-    syncLastError = '[' + lastType + '] ' + (lastError.message || JSON.stringify(lastError));
-  } else {
-    syncLastError = '';
-  }
+  // красный статус только если ВСЁ упало; иначе считаем что синхронизировано (частично)
+  syncStatus = (okCount === 0 && errCount > 0) ? 'error' : 'synced';
+  syncLastError = (errCount > 0 && lastError)
+    ? '[' + lastType + '] ' + (lastError.message || JSON.stringify(lastError))
+    : '';
   renderTopbar();
 }
 function showSyncError() {
@@ -2624,7 +2866,8 @@ function showSyncError() {
 }
 async function syncDelete(type, recordId) {
   if (!supa || !currentAgentRow) return;
-  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', partner: 'partner_deals', referral: 'referrals' };
+  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', tgchat: 'tg_chats', broadcast: 'tg_broadcasts' };
+  if (!tables[type]) return;
   syncStatus = 'syncing'; renderTopbar();
   const { error } = await supa.from(tables[type]).delete().eq('id', recordId);
   syncStatus = error ? 'error' : 'synced';
