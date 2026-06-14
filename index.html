@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0E0E10">
-<title>Каталог Сочи · CRM</title>
+<meta name="theme-color" content="#14182A">
+<title>CRM Агента</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -330,18 +330,33 @@ table.crm tr:hover td { background: var(--surface); }
 <script>
 /* ============================== STATE ============================== */
 const LS_KEY = 'sochi-crm-v1';
-const PAYMENT_LINK = 'https://qr.nspk.ru/BD10005BFV29G53K9DQOI6HUE8VU9T17';
-const SUBSCRIPTION_PRICE = 500;
+const PAYMENT_LINK = 'https://qr.nspk.ru/AD100065NS9L201R81IPM6JLBMAHKGC9';
+const SUBSCRIPTION_PRICE = 300;
 
 /* ============================== SUPABASE ============================== */
 const SUPABASE_URL = 'https://xdbdsyewjjhzqzuaijxi.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_0atPwLPgiiSWzS9iOFcDmw_3iBfJ3LC';
 let supa = null;
 let currentAgentRow = null;
-let syncStatus = 'offline'; // offline | syncing | synced | error
+let syncStatus = 'offline';
 let syncLastError = '';
 let pushQueue = new Map();
 let pushTimer = null;
+
+/* Captures ?ref=CODE from URL and saves it for use after registration */
+function capturePendingRef() {
+  try {
+    const url = new URL(location.href);
+    const code = (url.searchParams.get('ref') || '').trim().toUpperCase();
+    if (code) {
+      localStorage.setItem('pendingRefCode', code);
+      // подчищаем URL, чтобы не светить
+      url.searchParams.delete('ref');
+      history.replaceState(null, '', url.toString());
+    }
+  } catch(e) {}
+}
+capturePendingRef();
 const defaultState = () => ({
   theme: 'dark',
   user: { name: 'Алёна', phone: '', role: 'Агент', city: 'Сочи', balance: 0, subscriptionEnd: null, refCode: 'AK' + Math.floor(Math.random()*9000+1000), onlyMine: true },
@@ -1292,33 +1307,45 @@ function viewProfile() {
       <button class="btn ghost" onclick="go('finance')">Сделки</button>
     </div>
 
-    <div class="section-h">Telegram-рассылка</div>
-    <div class="card" style="padding: 14px;">
-      <p class="meta" style="margin: 0 0 10px;">Каналы и чаты: <strong style="color:var(--text);">${state.tgChats.length}</strong> · Запланировано: <strong style="color:var(--text);">${state.broadcasts.filter(b=>b.status==='pending').length}</strong></p>
-      <div class="btn-row">
-        <button class="btn ghost" onclick="manageTgChats()">Каналы</button>
-        <button class="btn" onclick="manageBroadcasts()">Расписание</button>
-      </div>
-    </div>
+    <!-- Автоматическая Telegram-рассылка временно скрыта.
+         Объекты можно отправлять вручную через кнопку «Скопировать как Telegram-пост»
+         в карточке объекта. -->
 
-    <div class="section-h">Реферальная программа</div>
-    <div class="card" style="padding: 14px;">
-      <p class="meta" style="margin: 0 0 8px;">Баланс</p>
-      <div style="font-size: 22px; font-weight: 600; color: var(--accent); margin-bottom: 4px;">${fmtMoney(state.referrals.reduce((s,r)=>s+(r.amount||0),0))}</div>
-      <p class="meta" style="margin: 0 0 12px; font-size: 11px;">${state.referrals.length === 0 ? 'Начислений пока нет. Деньги поступят после оплаты подписки приглашёнными агентами.' : state.referrals.length + ' начислений'}</p>
-      <p class="meta" style="margin: 0 0 4px;">Ваша ссылка</p>
-      <div style="color: var(--accent); word-break: break-all; font-size: 12px; padding: 8px; background: var(--surface-2); border-radius: 8px;">https://t.me/catalog_sochi_bot?ref=${state.user.refCode}</div>
-      <button class="btn ghost" style="margin-top: 8px;" onclick="copyRef()">Скопировать ссылку</button>
+
+    <div class="section-h">Пригласите друга</div>
+    <div class="card" style="padding: 14px; background: linear-gradient(135deg, rgba(201,163,106,.12), rgba(201,163,106,.04));">
+      <div style="font-size: 18px; font-weight: 600; color: var(--accent); margin-bottom: 4px;">🎁 Месяц подписки в подарок</div>
+      <p class="meta" style="margin: 0 0 14px;">За каждого приглашённого, который зарегистрируется в приложении — вы получаете <strong style="color:var(--text);">+30 дней</strong> к своей подписке бесплатно.</p>
+
+      <p class="meta" style="margin: 0 0 4px; font-size: 11px;">Ваша персональная ссылка</p>
+      <div style="color: var(--accent); word-break: break-all; font-size: 13px; padding: 10px; background: var(--surface-2); border-radius: 8px; font-family: monospace;">${getRefLink()}</div>
+
+      <div class="btn-row" style="margin-top: 10px;">
+        <button class="btn" onclick="shareRefLink()">Поделиться</button>
+        <button class="btn ghost" onclick="copyRef()">Скопировать</button>
+      </div>
+
+      <div style="display:flex; justify-content: space-between; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--row-border);">
+        <div>
+          <p class="meta" style="margin: 0 0 2px; font-size: 11px;">Приглашено</p>
+          <div style="font-size: 18px; font-weight: 600;">${state.referrals.length}</div>
+        </div>
+        <div style="text-align: right;">
+          <p class="meta" style="margin: 0 0 2px; font-size: 11px;">Бонус-месяцев</p>
+          <div style="font-size: 18px; font-weight: 600; color: var(--success);">${state.referrals.length}</div>
+        </div>
+      </div>
+
       ${state.referrals.length > 0 ? `
         <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--row-border);">
           <p class="meta" style="margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .3px;">История</p>
-          ${state.referrals.map(r => `
+          ${state.referrals.slice(0, 10).map(r => `
             <div class="list-item" style="padding: 8px 0;">
               <div style="flex:1;">
                 <div style="font-size: 13px;">${r.name}</div>
                 <div style="font-size: 11px; color: var(--text-muted);">${fmtDate(r.when)}</div>
               </div>
-              <div style="color: var(--success); font-weight: 600;">+${fmtMoney(r.amount)}</div>
+              <div style="color: var(--success); font-weight: 600; font-size: 12px;">+30 дней</div>
             </div>
           `).join('')}
         </div>` : ''}
@@ -1458,8 +1485,67 @@ function openClient(cid) {
       <a class="btn" href="tel:${c.phone}" style="text-decoration:none; text-align:center;">Позвонить</a>
       <button class="btn ghost" onclick="closeModal()">Готово</button>
     </div>
+    <button class="btn ghost" style="margin-top:8px;" onclick="transferClient('${c.id}')">↗ Передать другому агенту</button>
     <button class="btn danger" style="margin-top:8px;" onclick="delClient('${c.id}')">Удалить клиента</button>
   `);
+}
+function transferClient(cid) {
+  const c = state.clients.find(x => x.id === cid);
+  if (!c) return;
+  const agents = [...new Set((state.agents || []).filter(Boolean).filter(a => a !== c.responsible))];
+  if (!agents.length) {
+    alert('В системе нет других агентов. Добавьте сотрудника через Профиль → + Сотрудник.');
+    return;
+  }
+  openModal(`
+    <h2>Передать клиента</h2>
+    <p class="meta" style="margin-bottom: 14px;">Клиент: <strong style="color:var(--text);">${c.name}</strong></p>
+    <p class="meta" style="margin-bottom: 10px;">Сейчас ответственный: <strong style="color:var(--text);">${c.responsible}</strong></p>
+    <p class="meta" style="margin-bottom: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .3px;">Кому передать</p>
+    ${agents.map(a => `
+      <div class="card" style="cursor:pointer;" onclick="doTransferClient('${cid}','${a.replace(/'/g,"\\'")}')">
+        <div class="card-row">
+          <div>
+            <h3>${a}</h3>
+            <p class="meta">${state.clients.filter(x => x.responsible === a).length} клиентов</p>
+          </div>
+          <span style="color:var(--accent); font-size: 18px;">↗</span>
+        </div>
+      </div>
+    `).join('')}
+    <button class="btn ghost" style="margin-top: 10px;" onclick="openClient('${cid}')">Отмена</button>
+  `);
+}
+async function doTransferClient(cid, newAgent) {
+  const c = state.clients.find(x => x.id === cid);
+  if (!c) return;
+  const oldAgent = c.responsible;
+  if (!confirm(`Передать «${c.name}» от ${oldAgent} к ${newAgent}? Клиент пропадёт из вашего списка и появится у ${newAgent}.`)) return;
+
+  // если есть облако — обновляем через Supabase напрямую (правильный путь)
+  if (supa && currentAgentRow) {
+    try {
+      const { data: ag, error: aerr } = await supa.from('agents').select('id').eq('name', newAgent).limit(1).maybeSingle();
+      if (aerr) { alert('Ошибка поиска агента: ' + aerr.message); return; }
+      if (!ag) { alert('Агент «'+newAgent+'» не найден в облаке. Сначала он должен войти в приложение хотя бы раз.'); return; }
+
+      const { error: uerr } = await supa.from('clients')
+        .update({ responsible_agent_id: ag.id, responsible_name: newAgent })
+        .eq('id', cid);
+      if (uerr) { alert('Ошибка передачи: ' + uerr.message); return; }
+
+      // у себя локально удаляем — теперь это не наш клиент
+      state.clients = state.clients.filter(x => x.id !== cid);
+      saveState(state); closeModal(); render();
+      alert('Передан агенту ' + newAgent + '.');
+    } catch (e) { alert('Сбой: ' + e.message); }
+    return;
+  }
+
+  // офлайн-режим (без облака): просто меняем responsible
+  c.responsible = newAgent;
+  saveState(state); queuePush('client', c); closeModal(); render();
+  alert('Передан агенту ' + newAgent + '. После входа в облако он увидит клиента.');
 }
 function updClient(cid, field, val) {
   const c = state.clients.find(x => x.id === cid);
@@ -1499,7 +1585,7 @@ function openProperty(pid) {
       <button class="btn" onclick="shareProperty('${p.id}')">Поделиться</button>
       <button class="btn ghost" onclick="downloadPropertyPdf('${p.id}')">PDF</button>
     </div>
-    <button class="btn ghost" style="margin-bottom: 14px;" onclick="scheduleBroadcast('${p.id}')">📣 Запланировать в Telegram</button>
+    <button class="btn ghost" style="margin-bottom: 14px;" onclick="copyAsTgPost('${p.id}')">📋 Скопировать как Telegram-пост</button>
     <div class="field"><label>ЖК / Комплекс (обязательно)</label><input value="${p.complex||''}" onchange="updProp('${p.id}','complex',this.value)" placeholder="ЖК Морская симфония"></div>
     <div class="field"><label>Название/№ объекта</label><input value="${p.title||''}" onchange="updProp('${p.id}','title',this.value)" placeholder="кв.142"></div>
     <div class="field"><label>Тип</label>
@@ -2173,9 +2259,21 @@ function exportPropsXls() {
   }
 }
 
+function getRefLink() {
+  // используем текущий домен (каталог-сочи.рф когда задеплоим, GitHub Pages пока)
+  const base = location.origin + location.pathname.replace(/\/[^\/]*$/, '/');
+  return base + '?ref=' + (state.user.refCode || 'CA0000');
+}
 function copyRef() {
-  const link = 'https://t.me/catalog_sochi_bot?ref=' + state.user.refCode;
-  navigator.clipboard?.writeText(link).then(()=>alert('Ссылка скопирована'));
+  navigator.clipboard?.writeText(getRefLink()).then(()=>alert('Ссылка скопирована'));
+}
+async function shareRefLink() {
+  const link = getRefLink();
+  const text = 'Привет! Я пользуюсь CRM для агентов недвижимости — удобно вести клиентов, объекты, задачи и календарь. Зарегистрируйся по моей ссылке, и мы оба получим бонус: ' + link;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'CRM Агента', text }); return; } catch(e) {}
+  }
+  navigator.clipboard?.writeText(text).then(()=>alert('Текст скопирован — вставьте в Telegram/WhatsApp'));
 }
 
 function go(r) {
@@ -2280,6 +2378,35 @@ function delTgChat(chatId) {
   syncDelete('tgchat', chatId);
   manageTgChats();
 }
+async function copyAsTgPost(propId) {
+  const p = state.properties.find(x => x.id === propId);
+  if (!p) return;
+  const lines = [];
+  lines.push(`🏠 *${p.complex || ''}*`);
+  if (p.title) lines.push(`${p.title}`);
+  lines.push('');
+  if (p.price) lines.push(`💰 *${fmtMoney(p.price)}*`);
+  const params = [];
+  if (p.bedrooms != null) params.push(`🛏 ${bedroomsLabel(p.bedrooms)}`);
+  if (p.area) params.push(`📐 ${p.area}`);
+  if (params.length) lines.push(params.join(' · '));
+  if (p.district) lines.push(`📍 ${p.district}`);
+  if (p.developer) lines.push(`🏗 ${p.developer}`);
+  const reno = ({cosmetic:'Косметический ремонт',euro:'Евроремонт',design:'Дизайнерский ремонт'})[p.reno];
+  if (reno) lines.push(`✨ ${reno}`);
+  if (p.note) { lines.push(''); lines.push(p.note); }
+  lines.push('');
+  lines.push(`Контакт: ${state.user.name}${state.user.phone?', '+state.user.phone:''}`);
+
+  const text = lines.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('Скопировано в буфер. Вставьте в любой Telegram-чат или канал.');
+  } catch(e) {
+    alert(text);
+  }
+}
+
 function scheduleBroadcast(propId) {
   if (!state.tgChats.length) {
     alert('Сначала добавьте хотя бы один Telegram-канал в Профиле → Telegram-рассылка → Каналы.');
@@ -2719,18 +2846,33 @@ async function onAuthLogin(authUser) {
   try {
     let { data: agent, error } = await supa.from('agents').select('*').eq('auth_user_id', authUser.id).maybeSingle();
     if (error) console.error('agents fetch:', error);
+    let isNewAgent = false;
     if (!agent) {
       // первый вход — создаём профиль агента
+      isNewAgent = true;
       const meta = authUser.user_metadata || {};
+      const pendingRef = (localStorage.getItem('pendingRefCode') || '').trim().toUpperCase() || null;
       const ins = await supa.from('agents').insert({
         auth_user_id: authUser.id,
         name: meta.name || state.user.name || authUser.email.split('@')[0],
         role: meta.role || 'Директор',
         city: state.user.city || 'Сочи',
         phone: meta.phone || '',
+        referred_by_code: pendingRef,
       }).select().maybeSingle();
       agent = ins.data;
       if (ins.error) { alert('Ошибка создания профиля агента: ' + ins.error.message); return; }
+
+      // если был реф-код — начисляем месяц пригласившему
+      if (pendingRef) {
+        try {
+          const { data: cr } = await supa.rpc('credit_referrer', { inviter_code: pendingRef });
+          if (cr && cr.ok) {
+            localStorage.removeItem('pendingRefCode');
+            console.log('Реферал засчитан, новый срок подписки пригласившего:', cr.new_subscription_end);
+          }
+        } catch(e) { console.warn('credit_referrer:', e); }
+      }
     }
     currentAgentRow = agent;
     state.user.name = agent.name;
@@ -2738,6 +2880,8 @@ async function onAuthLogin(authUser) {
     state.user.phone = agent.phone || state.user.phone;
     state.user.email = authUser.email;
     state.user.cloudConnected = true;
+    state.user.refCode = agent.ref_code || state.user.refCode;
+    state.user.subscriptionEnd = agent.subscription_end || state.user.subscriptionEnd;
     saveState(state);
     await syncPullAll();
     syncStatus = 'synced';
@@ -2927,6 +3071,22 @@ async function pushAllLocal() {
     alert('Локальные данные загружены в облако');
   } catch (e) { console.error(e); syncStatus = 'error'; alert('Ошибка: ' + e.message); }
   renderTopbar();
+}
+
+/* ============================== CAPACITOR (нативная обёртка) ============================== */
+// Эти проверки работают только когда приложение запущено как нативное (Android/iOS)
+// В обычном браузере window.Capacitor отсутствует — всё работает по-старому
+const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+if (isNative) {
+  // Системные кнопки назад (Android) — закрыть модалку или вернуться, не закрывать приложение
+  document.addEventListener('backbutton', e => {
+    e.preventDefault();
+    const modal = document.getElementById('modalBg');
+    if (modal && modal.classList.contains('open')) { closeModal(); return; }
+    if (route !== 'home') { go('home'); return; }
+    // если уже на главной — позволим закрыть приложение
+    if (window.Capacitor.Plugins?.App?.exitApp) window.Capacitor.Plugins.App.exitApp();
+  }, false);
 }
 
 /* ============================== TELEGRAM (опционально) ============================== */
