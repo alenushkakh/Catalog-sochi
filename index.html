@@ -8,8 +8,8 @@
 <meta name="theme-color" content="#14182A">
 <title>CRM Агента</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/svg+xml" href="icon.svg">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 :root {
@@ -594,7 +594,7 @@ function render() {
 function renderSidebar() {
   document.getElementById('sidebar').innerHTML = `
     <div class="brand">
-      <img class="logo" src="icon.svg" alt="" style="background: transparent; border-radius: 7px;">
+      <img class="logo" src="icon.png" alt="" style="background: transparent; border-radius: 7px;">
       <div>Каталог Сочи<br><span class="brand-sub">${state.user.role} · ${state.user.name}</span></div>
     </div>
     <button class="nav-item ${route==='home'?'active':''}" onclick="go('home')"><span class="ico">⌂</span><span>Главная</span></button>
@@ -2927,6 +2927,8 @@ async function onAuthLogin(authUser) {
     state.user.cloudConnected = true;
     state.user.refCode = agent.ref_code || state.user.refCode;
     state.user.subscriptionEnd = agent.subscription_end || state.user.subscriptionEnd;
+    // подтягиваем аватар с сервера если он там есть
+    if (agent.avatar_url) state.user.avatar = agent.avatar_url;
     saveState(state);
     await syncPullAll();
     syncStatus = 'synced';
@@ -3002,11 +3004,25 @@ async function syncPullAll() {
     // tg_chats и tg_broadcasts
     if (tch && !tch.error && tch.data) state.tgChats = tch.data.map(tgChatFromDB);
     if (tbr && !tbr.error && tbr.data) state.broadcasts = tbr.data.map(broadcastFromDB);
-    const { data: agents } = await supa.from('agents').select('name, phone');
+    const { data: agents } = await supa.from('agents').select('id, name, phone, role, auth_user_id, avatar_url').order('created_at', { ascending: false });
     if (agents) {
-      state.agents = [...new Set(agents.map(a => a.name).filter(Boolean))];
+      // дедуп по auth_user_id
+      const byUser = new Map();
+      const noUser = [];
+      agents.forEach(a => {
+        if (a.auth_user_id) {
+          if (!byUser.has(a.auth_user_id)) byUser.set(a.auth_user_id, a);
+        } else noUser.push(a);
+      });
+      state.agentsFull = [...byUser.values(), ...noUser];
+      state.agents = state.agentsFull.map(a => a.name).filter(Boolean);
       state.agentPhones = {};
-      agents.forEach(a => { if (a.phone) state.agentPhones[a.name] = a.phone; });
+      state.agentsFull.forEach(a => { if (a.phone) state.agentPhones[a.name] = a.phone; });
+      // обновляем свой аватар с сервера если он там есть
+      if (currentAgentRow) {
+        const me = state.agentsFull.find(a => a.id === currentAgentRow.id);
+        if (me && me.avatar_url) state.user.avatar = me.avatar_url;
+      }
     }
     saveState(state);
     syncStatus = 'synced';

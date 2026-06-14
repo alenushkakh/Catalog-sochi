@@ -1,19 +1,31 @@
 {
-  "name": "Каталог Сочи · CRM",
-  "short_name": "Каталог Сочи",
-  "description": "CRM-приложение для агентов агентства недвижимости",
+  "name": "CRM Агента",
+  "short_name": "CRM Агента",
+  "description": "CRM для агентов недвижимости — клиенты, объекты, задачи, рассылки",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0E0E10",
-  "theme_color": "#0E0E10",
+  "background_color": "#14182A",
+  "theme_color": "#14182A",
   "orientation": "portrait",
   "lang": "ru",
   "icons": [
     {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }
