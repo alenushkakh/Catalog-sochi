@@ -305,8 +305,26 @@ table.crm tr:hover td { background: var(--surface); }
   table.crm th, table.crm td { padding: 12px 10px; }
   .filter-panel { max-width: 760px; }
   .client-mini { font-size: 13px; padding: 8px 14px; min-height: 40px; }
+}
+/* всплывающее напоминание */
+.reminder-banner {
+  position: fixed; top: 20px; right: 20px; max-width: 340px;
+  background: var(--accent); color: var(--accent-text);
+  padding: 14px 36px 14px 16px; border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  z-index: 1000; cursor: pointer;
+  animation: rb-in .35s ease-out;
+  font-size: 14px;
+}
+.reminder-banner strong { display:block; font-size: 12px; opacity: .85; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .3px; }
+.reminder-banner .rb-close { position:absolute; top: 6px; right: 8px; background: transparent; border: 0; color: inherit; font-size: 22px; line-height: 1; cursor: pointer; opacity: .7; }
+.reminder-banner .rb-close:hover { opacity: 1; }
+@keyframes rb-in { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@media (max-width: 600px) {
+  .reminder-banner { left: 12px; right: 12px; top: max(env(safe-area-inset-top), 12px); max-width: none; }
+}
+@media (min-width: 900px) {
   .client-mini .cm-name { font-size: 14px; }
-
   .modal-bg { align-items: center; }
   .modal { border-radius: 18px; max-width: 560px; max-height: 88vh; }
 }
@@ -709,15 +727,13 @@ function goCrm(tab) {
 
 function clientMiniRow(c) {
   const next = c.nextContact ? fmtDate(c.nextContact) + (c.nextAction?' · '+c.nextAction:'') : '';
-  const isTransferredAway = c.transferredAway || (c.previousAgentIds && c.previousAgentIds.includes(currentAgentRow?.id) && c.responsible !== state.user.name);
-  const showResp = (state.user.role !== 'Агент' || isTransferredAway) && c.responsible;
+  const showResp = state.user.role !== 'Агент' && c.responsible;
   const priorityBg = c.priority ? 'background: rgba(250,199,117,.22);' : '';
-  const fadedStyle = isTransferredAway ? 'opacity: .45;' : '';
   return `
-    <div class="client-mini" onclick="openClient('${c.id}')" style="border-left-color: ${statusStripe(c.status)}; ${priorityBg} ${fadedStyle}">
+    <div class="client-mini" onclick="openClient('${c.id}')" style="border-left-color: ${statusStripe(c.status)}; ${priorityBg}">
       <div class="cm-main">
-        <span class="cm-name">${c.priority?'⭐ ':''}${c.name}${showResp?` <span style="color:var(--text-muted); font-weight:400;">· ${c.responsible}${isTransferredAway?' ↗':''}</span>`:''}</span>
-        <span class="cm-meta">${[c.type, budgetText(c)].filter(Boolean).join(' · ')}${isTransferredAway?' · передан':''}</span>
+        <span class="cm-name">${c.priority?'⭐ ':''}${c.name}${showResp?` <span style="color:var(--text-muted); font-weight:400;">· ${c.responsible}</span>`:''}</span>
+        <span class="cm-meta">${[c.type, budgetText(c)].filter(Boolean).join(' · ')}</span>
       </div>
       <span class="cm-next">${next}</span>
       <span class="pill ${statusClass(c.status)}" style="font-size:10px; padding:2px 7px;">${statusLabel(c.status)}</span>
@@ -1274,16 +1290,12 @@ function toggleTask(taskId) {
 function viewProfile() {
   const refTotal = state.referrals.reduce((s,r)=>s+r.amount, 0);
   return `
-    <div class="card" style="display:flex; align-items:center; gap: 12px; cursor:pointer;" onclick="editProfile()">
-      ${state.user.avatar ?
-        `<div style="width: 56px; height: 56px; border-radius: 50%; background-image: url('${state.user.avatar}'); background-size: cover; background-position: center;"></div>` :
-        `<div class="avatar acc" style="width: 56px; height: 56px; font-size: 18px;">${initials(state.user.name)}</div>`
-      }
-      <div style="flex:1; min-width: 0;">
+    <div class="card" style="display:flex; align-items:center; gap: 12px;">
+      <div class="avatar acc" style="width: 56px; height: 56px; font-size: 18px;">${initials(state.user.name)}</div>
+      <div>
         <h3 style="font-size:17px;">${state.user.name}</h3>
-        <p class="meta">${state.user.role}${state.user.city?' · '+state.user.city:''}${state.user.phone?' · '+state.user.phone:''}</p>
+        <p class="meta">${state.user.role} · ${state.user.city}</p>
       </div>
-      <span style="color:var(--accent); font-size: 14px;">✎</span>
     </div>
 
     <div class="section-h">Подписка</div>
@@ -1313,9 +1325,15 @@ function viewProfile() {
       <button class="btn ghost" onclick="go('finance')">Сделки</button>
     </div>
 
-    <!-- Автоматическая Telegram-рассылка временно скрыта.
-         Объекты можно отправлять вручную через кнопку «Скопировать как Telegram-пост»
-         в карточке объекта. -->
+    <div class="section-h">Telegram-рассылка</div>
+    <div class="card" style="padding: 14px;">
+      <p class="meta" style="margin: 0 0 8px;">Бот: <strong style="color:var(--text);">@Alena_kh_bot</strong> · Каналы: <strong style="color:var(--text);">${state.tgChats.length}</strong> · В очереди: <strong style="color:var(--text);">${state.broadcasts.filter(b=>b.status==='pending').length}</strong></p>
+      <p class="meta" style="margin: 0 0 10px; font-size: 11px;">Сообщения отправляются от имени бота. В тексте поста подставляется имя и телефон агента, который запланировал рассылку.</p>
+      <div class="btn-row">
+        <button class="btn ghost" onclick="manageTgChats()">Каналы</button>
+        <button class="btn" onclick="manageBroadcasts()">Расписание</button>
+      </div>
+    </div>
 
 
     <div class="section-h">Пригласите друга</div>
@@ -1498,10 +1516,9 @@ function openClient(cid) {
 function transferClient(cid) {
   const c = state.clients.find(x => x.id === cid);
   if (!c) return;
-  // используем полный список с id (только тех у кого есть auth_user_id = реальные пользователи)
-  const fullAgents = (state.agentsFull || []).filter(a => a.auth_user_id && a.name !== c.responsible);
-  if (!fullAgents.length) {
-    alert('В системе нет других подключённых агентов. Сначала пригласите коллегу зарегистрироваться в приложении.');
+  const agents = [...new Set((state.agents || []).filter(Boolean).filter(a => a !== c.responsible))];
+  if (!agents.length) {
+    alert('В системе нет других агентов. Добавьте сотрудника через Профиль → + Сотрудник.');
     return;
   }
   openModal(`
@@ -1509,12 +1526,12 @@ function transferClient(cid) {
     <p class="meta" style="margin-bottom: 14px;">Клиент: <strong style="color:var(--text);">${c.name}</strong></p>
     <p class="meta" style="margin-bottom: 10px;">Сейчас ответственный: <strong style="color:var(--text);">${c.responsible}</strong></p>
     <p class="meta" style="margin-bottom: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .3px;">Кому передать</p>
-    ${fullAgents.map(a => `
-      <div class="card" style="cursor:pointer;" onclick="doTransferClient('${cid}','${a.id}','${(a.name||'').replace(/'/g,"\\'")}')">
+    ${agents.map(a => `
+      <div class="card" style="cursor:pointer;" onclick="doTransferClient('${cid}','${a.replace(/'/g,"\\'")}')">
         <div class="card-row">
           <div>
-            <h3>${a.name}</h3>
-            <p class="meta">${state.clients.filter(x => x.responsible === a.name).length} клиентов${a.role && a.role !== 'Агент' ? ' · ' + a.role : ''}</p>
+            <h3>${a}</h3>
+            <p class="meta">${state.clients.filter(x => x.responsible === a).length} клиентов</p>
           </div>
           <span style="color:var(--accent); font-size: 18px;">↗</span>
         </div>
@@ -1523,42 +1540,36 @@ function transferClient(cid) {
     <button class="btn ghost" style="margin-top: 10px;" onclick="openClient('${cid}')">Отмена</button>
   `);
 }
-async function doTransferClient(cid, newAgentId, newAgentName) {
+async function doTransferClient(cid, newAgent) {
   const c = state.clients.find(x => x.id === cid);
   if (!c) return;
   const oldAgent = c.responsible;
-  if (!confirm(`Передать «${c.name}» от ${oldAgent} к ${newAgentName}? Клиент пропадёт из вашего активного списка.`)) return;
+  if (!confirm(`Передать «${c.name}» от ${oldAgent} к ${newAgent}? Клиент пропадёт из вашего списка и появится у ${newAgent}.`)) return;
 
+  // если есть облако — обновляем через Supabase напрямую (правильный путь)
   if (supa && currentAgentRow) {
     try {
-      // запоминаем кто был ответственный до передачи (для бледного отображения у бывшего)
-      const prev = c.previousAgentIds || [];
-      const updatedPrev = [...new Set([...prev, currentAgentRow.id])];
+      const { data: ag, error: aerr } = await supa.from('agents').select('id').eq('name', newAgent).limit(1).maybeSingle();
+      if (aerr) { alert('Ошибка поиска агента: ' + aerr.message); return; }
+      if (!ag) { alert('Агент «'+newAgent+'» не найден в облаке. Сначала он должен войти в приложение хотя бы раз.'); return; }
 
       const { error: uerr } = await supa.from('clients')
-        .update({
-          responsible_agent_id: newAgentId,
-          responsible_name: newAgentName,
-          previous_agents: updatedPrev,
-        })
+        .update({ responsible_agent_id: ag.id, responsible_name: newAgent })
         .eq('id', cid);
       if (uerr) { alert('Ошибка передачи: ' + uerr.message); return; }
 
-      // обновляем локально вместо удаления — пометим как переданный, видно бледно
-      c.responsible = newAgentName;
-      c.previousAgentIds = updatedPrev;
-      c.transferredAway = true; // флаг для бледного отображения
+      // у себя локально удаляем — теперь это не наш клиент
+      state.clients = state.clients.filter(x => x.id !== cid);
       saveState(state); closeModal(); render();
-      alert('Передан агенту ' + newAgentName + '. Виден у вас бледно — работа ведётся, но ответственный теперь ' + newAgentName + '.');
+      alert('Передан агенту ' + newAgent + '.');
     } catch (e) { alert('Сбой: ' + e.message); }
     return;
   }
 
-  // офлайн-режим
-  c.responsible = newAgentName;
-  c.transferredAway = true;
+  // офлайн-режим (без облака): просто меняем responsible
+  c.responsible = newAgent;
   saveState(state); queuePush('client', c); closeModal(); render();
-  alert('Передан агенту ' + newAgentName + '.');
+  alert('Передан агенту ' + newAgent + '. После входа в облако он увидит клиента.');
 }
 function updClient(cid, field, val) {
   const c = state.clients.find(x => x.id === cid);
@@ -1598,7 +1609,10 @@ function openProperty(pid) {
       <button class="btn" onclick="shareProperty('${p.id}')">Поделиться</button>
       <button class="btn ghost" onclick="downloadPropertyPdf('${p.id}')">PDF</button>
     </div>
-    <button class="btn ghost" style="margin-bottom: 14px;" onclick="copyAsTgPost('${p.id}')">📋 Скопировать как Telegram-пост</button>
+    <div class="btn-row" style="margin-bottom: 14px;">
+      <button class="btn ghost" onclick="scheduleBroadcast('${p.id}')">📣 Запланировать TG</button>
+      <button class="btn ghost" onclick="copyAsTgPost('${p.id}')">📋 Скопировать пост</button>
+    </div>
     <div class="field"><label>ЖК / Комплекс (обязательно)</label><input value="${p.complex||''}" onchange="updProp('${p.id}','complex',this.value)" placeholder="ЖК Морская симфония"></div>
     <div class="field"><label>Название/№ объекта</label><input value="${p.title||''}" onchange="updProp('${p.id}','title',this.value)" placeholder="кв.142"></div>
     <div class="field"><label>Тип</label>
@@ -1653,6 +1667,19 @@ function openProperty(pid) {
   `);
 }
 
+async function uploadOnePhotoToStorage(blob, propId) {
+  if (!supa || !currentAgentRow) return null;
+  try {
+    const filename = `${propId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
+    const { error } = await supa.storage.from('property-photos').upload(filename, blob, {
+      contentType: 'image/jpeg', cacheControl: '3600', upsert: false,
+    });
+    if (error) { console.warn('storage upload:', error); return null; }
+    const { data } = supa.storage.from('property-photos').getPublicUrl(filename);
+    return data?.publicUrl || null;
+  } catch(e) { console.warn(e); return null; }
+}
+
 function uploadPropPhotos(pid, input) {
   const p = state.properties.find(x => x.id === pid);
   if (!p) return;
@@ -1666,8 +1693,7 @@ function uploadPropPhotos(pid, input) {
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
-      img.onload = () => {
-        // двойной ресайз — при огромных фото сжимаем сначала до 1600, потом до 1000
+      img.onload = async () => {
         const max = 1000;
         const ratio = Math.min(max / img.width, max / img.height, 1);
         const canvas = document.createElement('canvas');
@@ -1676,23 +1702,25 @@ function uploadPropPhotos(pid, input) {
         const ctx = canvas.getContext('2d');
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        // подбираем качество — начинаем с 0.78, при превышении 280 КБ снижаем
         let quality = 0.78;
         let dataUrl = canvas.toDataURL('image/jpeg', quality);
         while (dataUrl.length > 380000 && quality > 0.35) {
           quality -= 0.1;
           dataUrl = canvas.toDataURL('image/jpeg', quality);
         }
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
+        const storageUrl = await uploadOnePhotoToStorage(blob, pid);
         try {
-          p.photos.push(dataUrl);
+          p.photos.push(storageUrl || dataUrl);
           saveState(state);
+          if (storageUrl) queuePush('property', p);
           processed++; checkDone();
         } catch (err) {
-          alert('Не хватает места в хранилище. Удалите часть фото у других объектов.');
+          alert('Не хватает места локально — фото сохранено в облаке');
           processed++; checkDone();
         }
       };
-      img.onerror = () => { alert('Не удалось прочитать фото "'+file.name+'"'); processed++; checkDone(); };
+      img.onerror = () => { alert('Не удалось прочитать фото'); processed++; checkDone(); };
       img.src = e.target.result;
     };
     reader.onerror = () => { processed++; checkDone(); };
@@ -2032,86 +2060,25 @@ function saveNewPartner() {
 }
 
 function editProfile() {
-  const isAdmin = state.user.role === 'Директор' || state.user.role === 'Руководитель отдела';
   openModal(`
-    <h2>Мой профиль</h2>
-    <div style="display:flex; align-items:center; gap:14px; margin-bottom:14px;">
-      <div id="up-avatar-preview" style="width: 72px; height: 72px; border-radius: 50%; ${state.user.avatar ? `background-image: url('${state.user.avatar}'); background-size: cover; background-position: center;` : 'background: var(--accent); color: var(--accent-text); display:flex; align-items:center; justify-content:center; font-weight: 600; font-size: 22px;'}">
-        ${state.user.avatar ? '' : initials(state.user.name)}
-      </div>
-      <div style="flex:1;">
-        <label class="btn ghost" style="cursor:pointer;">
-          Загрузить фото
-          <input type="file" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
-        </label>
-        ${state.user.avatar ? '<button class="btn ghost" style="margin-top: 4px; color:var(--danger);" onclick="removeAvatar()">Удалить фото</button>' : ''}
-      </div>
+    <h2>Профиль</h2>
+    <div class="field"><label>Имя</label><input id="up-name" value="${state.user.name}"></div>
+    <div class="field"><label>Телефон</label><input id="up-phone" type="tel" value="${state.user.phone||''}"></div>
+    <div class="field"><label>Город</label><input id="up-city" value="${state.user.city}"></div>
+    <div class="field"><label>Роль</label>
+      <select id="up-role">
+        ${['Агент','Руководитель отдела','Директор'].map(r=>`<option ${state.user.role===r?'selected':''}>${r}</option>`).join('')}
+      </select>
     </div>
-
-    <div class="field"><label>ФИО</label><input id="up-name" value="${state.user.name||''}" placeholder="Иванов Иван"></div>
-    <div class="field"><label>Телефон</label><input id="up-phone" type="tel" value="${state.user.phone||''}" placeholder="+7..."></div>
-    <div class="field"><label>Email</label><input id="up-email" type="email" value="${state.user.email||''}" disabled style="opacity:.6;"></div>
-    <div class="field"><label>Город</label><input id="up-city" value="${state.user.city||''}" placeholder="Сочи"></div>
-    ${isAdmin ? `
-      <div class="field"><label>Роль</label>
-        <select id="up-role">
-          ${['Агент','Руководитель отдела','Директор'].map(r=>`<option ${state.user.role===r?'selected':''}>${r}</option>`).join('')}
-        </select>
-      </div>
-    ` : `<div class="field"><label>Роль</label><input value="${state.user.role}" disabled style="opacity:.6;"></div>`}
-
     <button class="btn" onclick="saveProfile()">Сохранить</button>
   `);
-}
-function uploadAvatar(input) {
-  const f = input.files[0]; if (!f) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const img = new Image();
-    img.onload = () => {
-      // сжимаем до 256x256
-      const c = document.createElement('canvas');
-      const sz = 256;
-      c.width = sz; c.height = sz;
-      const ctx = c.getContext('2d');
-      // crop center square
-      const minSide = Math.min(img.width, img.height);
-      const sx = (img.width - minSide) / 2;
-      const sy = (img.height - minSide) / 2;
-      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, sz, sz);
-      state.user.avatar = c.toDataURL('image/jpeg', 0.85);
-      saveState(state);
-      editProfile(); // переоткрыть с новым превью
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(f);
-}
-function removeAvatar() {
-  delete state.user.avatar;
-  saveState(state);
-  editProfile();
 }
 function saveProfile() {
   state.user.name = document.getElementById('up-name').value;
   state.user.phone = document.getElementById('up-phone').value;
   state.user.city = document.getElementById('up-city').value;
-  const roleEl = document.getElementById('up-role');
-  if (roleEl) state.user.role = roleEl.value;
-  saveState(state);
-  // если в облаке — пушим в agents
-  if (supa && currentAgentRow) {
-    supa.from('agents').update({
-      name: state.user.name,
-      phone: state.user.phone,
-      city: state.user.city,
-      role: state.user.role,
-      avatar_url: state.user.avatar || null,
-    }).eq('id', currentAgentRow.id).then(({error}) => {
-      if (error) console.error('save profile to cloud:', error);
-    });
-  }
-  closeModal(); render();
+  state.user.role = document.getElementById('up-role').value;
+  saveState(state); closeModal(); render();
 }
 
 function exportData() {
@@ -2776,7 +2743,6 @@ function clientToDB(c) {
 function clientFromDB(r) {
   const noteRaw = r.note || '';
   const isPriority = noteRaw.includes('[⭐priority]');
-  const prevAgents = Array.isArray(r.previous_agents) ? r.previous_agents : [];
   return {
     id: r.id, name: r.name, phone: r.phone, status: r.status || 'new',
     requestComment: r.request_comment || '', type: r.type || '',
@@ -2785,12 +2751,12 @@ function clientFromDB(r) {
     note: noteRaw.replace(/\s*\[⭐priority\]/g, '').trim(),
     priority: isPriority,
     responsible: r.responsible_name || '',
-    previousAgentIds: prevAgents,
-    transferredAway: prevAgents.includes(currentAgentRow?.id) && r.responsible_agent_id !== currentAgentRow?.id,
     created: r.created_at,
   };
 }
 function propToDB(p) {
+  // отправляем в БД только URL-фото (Storage), пропускаем data:URL
+  const photoUrls = (p.photos || []).filter(ph => typeof ph === 'string' && ph.startsWith('http'));
   return {
     id: p.id, complex: p.complex, title: p.title, kind: p.kind,
     bedrooms: p.bedrooms, reno: p.reno || null, area: p.area,
@@ -2799,6 +2765,7 @@ function propToDB(p) {
     agent_id: currentAgentRow?.id || null,
     agent_name: p.agent || currentAgentRow?.name,
     agent_phone: p.agentPhone || state.user.phone || null,
+    photos: photoUrls,
   };
 }
 function propFromDB(r) {
@@ -2808,7 +2775,8 @@ function propFromDB(r) {
     price: r.price || 0, commission: r.commission || '',
     district: r.district || '', developer: r.developer || '', note: r.note || '',
     agent: r.agent_name || '', agentPhone: r.agent_phone || '',
-    photos: [], nextEvent: null, nextEventTitle: '',
+    photos: Array.isArray(r.photos) ? r.photos : [],
+    nextEvent: null, nextEventTitle: '',
   };
 }
 function taskToDB(t) {
@@ -3034,22 +3002,11 @@ async function syncPullAll() {
     // tg_chats и tg_broadcasts
     if (tch && !tch.error && tch.data) state.tgChats = tch.data.map(tgChatFromDB);
     if (tbr && !tbr.error && tbr.data) state.broadcasts = tbr.data.map(broadcastFromDB);
-    const { data: agents } = await supa.from('agents').select('id, name, phone, auth_user_id, role, avatar_url').order('created_at', { ascending: false });
+    const { data: agents } = await supa.from('agents').select('name, phone');
     if (agents) {
-      // дедуп по auth_user_id — один пользователь = одна запись, берём самую свежую
-      const byUser = new Map();
-      const noUser = [];
-      agents.forEach(a => {
-        if (a.auth_user_id) {
-          if (!byUser.has(a.auth_user_id)) byUser.set(a.auth_user_id, a);
-        } else {
-          noUser.push(a);
-        }
-      });
-      state.agentsFull = [...byUser.values(), ...noUser];
-      state.agents = state.agentsFull.map(a => a.name).filter(Boolean);
+      state.agents = [...new Set(agents.map(a => a.name).filter(Boolean))];
       state.agentPhones = {};
-      state.agentsFull.forEach(a => { if (a.phone) state.agentPhones[a.name] = a.phone; });
+      agents.forEach(a => { if (a.phone) state.agentPhones[a.name] = a.phone; });
     }
     saveState(state);
     syncStatus = 'synced';
@@ -3109,19 +3066,24 @@ async function syncDelete(type, recordId) {
 /* ============================== SUPABASE: UI ============================== */
 function openCloudLogin() {
   openModal(`
-    <h2>Облако</h2>
+    <h2>Облако: вход</h2>
     <p class="meta" style="margin-bottom: 14px;">Войдите чтобы данные синхронизировались между всеми устройствами.</p>
     <div class="tabs" style="margin-bottom: 14px;">
-      <button class="tab active" id="cl-tab-in" onclick="document.getElementById('cl-mode').value='in'; document.querySelectorAll('.cl-signup').forEach(el=>el.style.display='none'); document.getElementById('cl-submit').textContent='Войти'; document.getElementById('cl-tab-in').classList.add('active'); document.getElementById('cl-tab-up').classList.remove('active');">Войти</button>
-      <button class="tab" id="cl-tab-up" onclick="document.getElementById('cl-mode').value='up'; document.querySelectorAll('.cl-signup').forEach(el=>el.style.display='block'); document.getElementById('cl-submit').textContent='Зарегистрироваться'; document.getElementById('cl-tab-up').classList.add('active'); document.getElementById('cl-tab-in').classList.remove('active');">Регистрация</button>
+      <button class="tab active" onclick="document.getElementById('cl-mode').value='in'; document.getElementById('cl-name-field').style.display='none'; document.getElementById('cl-role-field').style.display='none'; document.getElementById('cl-submit').textContent='Войти';">Войти</button>
+      <button class="tab" onclick="document.getElementById('cl-mode').value='up'; document.getElementById('cl-name-field').style.display='block'; document.getElementById('cl-role-field').style.display='block'; document.getElementById('cl-submit').textContent='Зарегистрироваться';">Регистрация</button>
     </div>
     <input id="cl-mode" type="hidden" value="in">
     <div class="field"><label>Email</label><input id="cl-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
     <div class="field"><label>Пароль</label><input id="cl-password" type="password" autocomplete="current-password" placeholder="минимум 6 знаков"></div>
-    <div class="field cl-signup" style="display:none;"><label>ФИО агента</label><input id="cl-name" value="${state.user.name||''}" placeholder="Иванов Иван"></div>
-    <div class="field cl-signup" style="display:none;"><label>Телефон</label><input id="cl-phone" type="tel" value="${state.user.phone||''}" placeholder="+7..."></div>
+    <div class="field" id="cl-name-field" style="display:none;"><label>Имя</label><input id="cl-name" value="${state.user.name||''}"></div>
+    <div class="field" id="cl-role-field" style="display:none;"><label>Роль</label>
+      <select id="cl-role">
+        <option>Агент</option>
+        <option>Руководитель отдела</option>
+        <option selected>Директор</option>
+      </select>
+    </div>
     <button id="cl-submit" class="btn" onclick="submitCloudAuth()">Войти</button>
-    <p class="meta" style="margin-top: 12px; font-size: 11px; text-align: center;">При регистрации вы становитесь Агентом. Руководитель агентства может повысить вас до Руководителя или Директора.</p>
   `);
 }
 async function submitCloudAuth() {
@@ -3134,9 +3096,8 @@ async function submitCloudAuth() {
     if (ok) closeModal();
   } else {
     const name = document.getElementById('cl-name').value.trim() || email.split('@')[0];
-    const phone = document.getElementById('cl-phone').value.trim();
-    state.user.phone = phone; // запоминаем чтобы попало в agent_metadata
-    const ok = await cloudSignUp(email, password, name, 'Агент');
+    const role = document.getElementById('cl-role').value;
+    const ok = await cloudSignUp(email, password, name, role);
     if (ok) closeModal();
   }
 }
@@ -3216,9 +3177,112 @@ window.addEventListener('popstate', e => {
 // заменяем "уход" из приложения на возврат на главную
 history.replaceState({ route, crmTab }, '', location.hash || '#' + route);
 
+/* ============================== REMINDERS ============================== */
+function initReminders() {
+  // запросить разрешение на пуши при первом клике пользователя
+  if ('Notification' in window && Notification.permission === 'default') {
+    document.addEventListener('click', () => {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(()=>{});
+      }
+    }, { once: true });
+  }
+  // проверять очередь раз в минуту
+  setInterval(checkReminders, 60000);
+  // первая проверка через 5 секунд после старта
+  setTimeout(checkReminders, 5000);
+}
+
+function checkReminders() {
+  if (!state.notifiedIds) state.notifiedIds = [];
+  // обнуляем список оповещённых в начале каждого дня
+  if (!state.notifiedDate || state.notifiedDate !== new Date().toDateString()) {
+    state.notifiedIds = [];
+    state.notifiedDate = new Date().toDateString();
+  }
+  const now = Date.now();
+  const horizonMin = 30; // напоминаем за 30 минут до события
+  const due = [];
+
+  // задачи
+  state.tasks.forEach(t => {
+    if (t.done || !t.when) return;
+    const diff = (new Date(t.when).getTime() - now) / 60000;
+    if (diff >= -1 && diff <= horizonMin && !state.notifiedIds.includes('task_'+t.id)) {
+      due.push({ id: 'task_'+t.id, kind: 'Задача', title: t.title, when: t.when, openFn: `openTask('${t.id}')` });
+    }
+  });
+
+  // клиенты — nextContact
+  visibleClients().forEach(c => {
+    if (!c.nextContact) return;
+    const diff = (new Date(c.nextContact).getTime() - now) / 60000;
+    if (diff >= -1 && diff <= horizonMin && !state.notifiedIds.includes('client_'+c.id)) {
+      due.push({
+        id: 'client_'+c.id, kind: 'Клиент',
+        title: (c.nextAction || 'Контакт') + ' · ' + c.name,
+        when: c.nextContact, openFn: `openClient('${c.id}')`,
+      });
+    }
+  });
+
+  // объекты — nextEvent
+  state.properties.forEach(p => {
+    if (!p.nextEvent) return;
+    const diff = (new Date(p.nextEvent).getTime() - now) / 60000;
+    if (diff >= -1 && diff <= horizonMin && !state.notifiedIds.includes('prop_'+p.id)) {
+      due.push({
+        id: 'prop_'+p.id, kind: 'Объект',
+        title: (p.nextEventTitle || 'Событие') + ' · ' + (p.complex || p.title),
+        when: p.nextEvent, openFn: `openProperty('${p.id}')`,
+      });
+    }
+  });
+
+  due.forEach(d => {
+    fireReminder(d);
+    state.notifiedIds.push(d.id);
+  });
+  if (due.length) saveState(state);
+}
+
+function fireReminder(d) {
+  const time = fmtTime(d.when);
+  // браузерный пуш если разрешено
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      const n = new Notification('CRM Агента · ' + time, {
+        body: d.title, icon: 'icon.svg', tag: d.id, badge: 'icon.svg',
+      });
+      n.onclick = () => { window.focus(); try { eval(d.openFn); } catch(e){} n.close(); };
+    } catch(e) { console.warn(e); }
+  }
+  // плюс показываем внутренний баннер в любом случае
+  showReminderBanner(d, time);
+}
+
+function showReminderBanner(d, time) {
+  const banner = document.createElement('div');
+  banner.className = 'reminder-banner';
+  banner.innerHTML = `
+    <strong>⏰ ${time} · ${d.kind}</strong>
+    <div>${d.title}</div>
+    <button class="rb-close" aria-label="Закрыть">×</button>
+  `;
+  banner.onclick = e => {
+    if (e.target.classList.contains('rb-close')) { banner.remove(); return; }
+    banner.remove();
+    try { eval(d.openFn); } catch(err) {}
+  };
+  document.body.appendChild(banner);
+  // автоматически убрать через 45 секунд
+  setTimeout(() => banner.remove(), 45000);
+}
+
 /* ============================== INIT ============================== */
 render();
 initSupabase();
+initReminders();
 </script>
 </body>
 </html>
