@@ -2509,18 +2509,18 @@ async function sendBroadcastNow(bid) {
   if (!supa) { alert('Нужен вход в облако'); return; }
   const b = state.broadcasts.find(x => x.id === bid);
   if (!b) return;
-  // ставим время в прошлое и сразу триггерим обработчик
-  b.when = new Date(Date.now() - 5000).toISOString();
+  // ставим время в прошлое — крон Supabase подхватит в течение минуты
+  b.when = new Date(Date.now() - 60000).toISOString();
   b.status = 'pending';
   saveState(state);
-  await supa.from('tg_broadcasts').update({ when_at: b.when, status: 'pending' }).eq('id', bid);
-  const { data, error } = await supa.rpc('process_tg_broadcasts');
+  const { error } = await supa.from('tg_broadcasts')
+    .update({ when_at: b.when, status: 'pending', error_text: null })
+    .eq('id', bid);
   if (error) { alert('Ошибка: ' + error.message); return; }
-  // подтянуть актуальный статус
-  await syncPullAll();
-  const updated = state.broadcasts.find(x => x.id === bid);
-  alert('Обработано: ' + data + ' рассылок. Статус этой: ' + (updated?.status || 'unknown') + (updated?.errorText ? '\n\n' + updated.errorText : ''));
-  manageBroadcasts();
+  closeModal();
+  alert('Поставлено в очередь. Бот отправит в течение минуты. Откройте «Расписание» позже чтобы увидеть статус «sent».');
+  // через 70 секунд автоматически синхронизируем
+  setTimeout(async () => { await syncPullAll(); render(); }, 70000);
 }
 function manageBroadcasts() {
   const list = (state.broadcasts || []).slice().sort((a,b) => new Date(b.when) - new Date(a.when));
