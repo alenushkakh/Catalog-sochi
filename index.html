@@ -1327,7 +1327,7 @@ function viewProfile() {
 
     <div class="section-h">Telegram-рассылка</div>
     <div class="card" style="padding: 14px;">
-      <p class="meta" style="margin: 0 0 8px;">Бот: <strong style="color:var(--text);">@Alena_kh_bot</strong> · Каналы: <strong style="color:var(--text);">${state.tgChats.length}</strong> · В очереди: <strong style="color:var(--text);">${state.broadcasts.filter(b=>b.status==='pending').length}</strong></p>
+      <p class="meta" style="margin: 0 0 8px;">Бот: <strong style="color:var(--text);">@CRM_Agenta_bot</strong> · Каналы: <strong style="color:var(--text);">${state.tgChats.length}</strong> · В очереди: <strong style="color:var(--text);">${state.broadcasts.filter(b=>b.status==='pending').length}</strong></p>
       <p class="meta" style="margin: 0 0 10px; font-size: 11px;">Сообщения отправляются от имени бота. В тексте поста подставляется имя и телефон агента, который запланировал рассылку.</p>
       <div class="btn-row">
         <button class="btn ghost" onclick="manageTgChats()">Каналы</button>
