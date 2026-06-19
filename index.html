@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#14182A">
 <title>CRM Агента</title>
-<link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" href="icon.png">
-<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json?v=20260616">
+<link rel="icon" type="image/png" href="icon.png?v=20260616">
+<link rel="apple-touch-icon" href="icon.png?v=20260616">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 :root {
@@ -349,7 +349,7 @@ table.crm tr:hover td { background: var(--surface); }
 /* ============================== STATE ============================== */
 const LS_KEY = 'sochi-crm-v1';
 const PAYMENT_LINK = 'https://qr.nspk.ru/AD100065NS9L201R81IPM6JLBMAHKGC9';
-const SUBSCRIPTION_PRICE = 300;
+const SUBSCRIPTION_PRICE = 500;
 
 /* ============================== SUPABASE ============================== */
 const SUPABASE_URL = 'https://xdbdsyewjjhzqzuaijxi.supabase.co';
@@ -594,7 +594,7 @@ function render() {
 function renderSidebar() {
   document.getElementById('sidebar').innerHTML = `
     <div class="brand">
-      <img class="logo" src="icon.png" alt="" style="background: transparent; border-radius: 7px;">
+      <img class="logo" src="icon.png?v=20260616" alt="" style="background: transparent; border-radius: 7px;">
       <div>Каталог Сочи<br><span class="brand-sub">${state.user.role} · ${state.user.name}</span></div>
     </div>
     <button class="nav-item ${route==='home'?'active':''}" onclick="go('home')"><span class="ico">⌂</span><span>Главная</span></button>
@@ -1289,9 +1289,13 @@ function toggleTask(taskId) {
 
 function viewProfile() {
   const refTotal = state.referrals.reduce((s,r)=>s+r.amount, 0);
+  const av = state.user.avatar;
+  const avatarBlock = av
+    ? `<img src="${av}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;" alt="">`
+    : `<div class="avatar acc" style="width: 56px; height: 56px; font-size: 18px;">${initials(state.user.name)}</div>`;
   return `
-    <div class="card" style="display:flex; align-items:center; gap: 12px;">
-      <div class="avatar acc" style="width: 56px; height: 56px; font-size: 18px;">${initials(state.user.name)}</div>
+    <div class="card" style="display:flex; align-items:center; gap: 12px;" onclick="editProfile()">
+      ${avatarBlock}
       <div>
         <h3 style="font-size:17px;">${state.user.name}</h3>
         <p class="meta">${state.user.role} · ${state.user.city}</p>
@@ -1299,25 +1303,17 @@ function viewProfile() {
     </div>
 
     <div class="section-h">Подписка</div>
-    <div class="card">
+    <div class="card" style="background: linear-gradient(135deg, rgba(29,158,117,.18), rgba(29,158,117,.04)); border: 1px solid rgba(29,158,117,.3);">
       <div class="card-row">
         <div>
-          <h3>Тариф «Агент»</h3>
-          <p class="meta">${SUBSCRIPTION_PRICE} ₽ / месяц · ${subStatusText()}</p>
+          <h3 style="color: var(--success);">🎉 Early access</h3>
+          <p class="meta">Сейчас приложение бесплатно для всех пользователей</p>
         </div>
-        <span class="pill ${subActive()?'s-new':'s-cold'}">${subActive()?'Активна':'Не активна'}</span>
+        <span class="pill s-new" style="background: var(--success); color: white;">Бесплатно</span>
       </div>
-      ${(() => {
-        const balance = state.referrals.reduce((s,r)=>s+(r.amount||0),0);
-        const canPayFromBalance = balance >= SUBSCRIPTION_PRICE;
-        return `
-          <button class="btn" style="margin-top:10px;" onclick="openPayment()">Оплатить ${SUBSCRIPTION_PRICE} ₽ через СБП</button>
-          <button class="btn ghost" style="margin-top:8px;" onclick="payFromBalance()" ${canPayFromBalance?'':'disabled style="opacity:.5;"'}>
-            Оплатить с баланса${canPayFromBalance ? '' : ` (нужно ${SUBSCRIPTION_PRICE-balance} ₽)`}
-          </button>
-          <p class="meta" style="margin-top: 6px; font-size: 11px;">Баланс рефералки: ${fmtMoney(balance)}</p>
-        `;
-      })()}
+      <p class="meta" style="margin-top: 10px; font-size: 12px;">
+        Спасибо что тестируешь продукт на ранней стадии. Когда мы дорастём, твоя реферальная программа сохранится — приглашённые останутся «за тобой».
+      </p>
     </div>
 
     <div class="section-h">Финансы</div>
@@ -1446,9 +1442,41 @@ function viewProfile() {
       <div class="profile-row" onclick="if(confirm('Удалить все данные приложения?')){localStorage.removeItem(LS_KEY); state=loadState(); render();}">
         <span class="label" style="color:var(--danger);">Сбросить приложение</span><span class="val">⟲</span>
       </div>
+      <a href="privacy.html" target="_blank" class="profile-row" style="text-decoration:none; color:inherit;">
+        <span class="label">Политика конфиденциальности</span><span class="val">↗</span>
+      </a>
+      <div class="profile-row" onclick="deleteMyAccount()" style="border-bottom: 0;">
+        <span class="label" style="color:var(--danger);">Удалить аккаунт безвозвратно</span><span class="val" style="color:var(--danger);">×</span>
+      </div>
     </div>
-    <p class="meta" style="text-align:center; margin: 20px 0; font-size: 11px;">каталог-сочи.рф · MVP v0.1</p>
+    <p class="meta" style="text-align:center; margin: 20px 0; font-size: 11px;">app.каталог-сочи.рф · MVP v0.1</p>
   `;
+}
+
+async function deleteMyAccount() {
+  if (!supa || !currentAgentRow) {
+    alert('Сначала войдите в облако');
+    return;
+  }
+  const confirm1 = prompt('Удаление аккаунта необратимо. Будут удалены: все клиенты, задачи, сделки, рассылки, реферальный баланс.\n\nЕсли уверены — введите слово "УДАЛИТЬ" заглавными буквами:');
+  if (confirm1 !== 'УДАЛИТЬ') return;
+  try {
+    const { data, error } = await supa.rpc('delete_my_data');
+    if (error) { alert('Ошибка: ' + error.message); return; }
+    // выходим
+    await supa.auth.signOut();
+    clearLocalUserState();
+    localStorage.removeItem('lastAuthUserId');
+    state.user.cloudConnected = false;
+    state.user.avatar = null;
+    state.user.email = '';
+    saveState(state);
+    currentAgentRow = null;
+    alert('Все ваши данные удалены. Если хотите окончательно удалить email — напишите на info@каталог-сочи.рф, мы удалим его из системы авторизации в течение 24 часов.');
+    render();
+  } catch (e) {
+    alert('Ошибка удаления: ' + e.message);
+  }
 }
 
 /* ============================== MODALS ============================== */
@@ -2060,8 +2088,20 @@ function saveNewPartner() {
 }
 
 function editProfile() {
+  const av = state.user.avatar;
+  const avatarPreview = av
+    ? `<img id="up-avatar-img" src="${av}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`
+    : `<div id="up-avatar-img" class="avatar acc" style="width:80px;height:80px;font-size:24px;">${initials(state.user.name)}</div>`;
   openModal(`
     <h2>Профиль</h2>
+    <div style="display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:14px;">
+      ${avatarPreview}
+      <label class="btn ghost" style="display:inline-block; cursor:pointer; margin:0;">
+        ${av ? 'Сменить фото' : 'Загрузить фото'}
+        <input type="file" accept="image/*" style="display:none;" onchange="uploadAvatar(this)">
+      </label>
+      ${av ? `<button class="btn ghost" style="font-size:12px; padding:4px 10px;" onclick="removeAvatar()">Удалить фото</button>` : ''}
+    </div>
     <div class="field"><label>Имя</label><input id="up-name" value="${state.user.name}"></div>
     <div class="field"><label>Телефон</label><input id="up-phone" type="tel" value="${state.user.phone||''}"></div>
     <div class="field"><label>Город</label><input id="up-city" value="${state.user.city}"></div>
@@ -2072,6 +2112,59 @@ function editProfile() {
     </div>
     <button class="btn" onclick="saveProfile()">Сохранить</button>
   `);
+}
+async function uploadAvatar(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = e => resolve(e.target.result);
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = dataUrl;
+    });
+    // обрезаем по центру в квадрат и уменьшаем до 240x240
+    const size = Math.min(img.width, img.height);
+    const sx = (img.width - size) / 2;
+    const sy = (img.height - size) / 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = 240; canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, sx, sy, size, size, 0, 0, 240, 240);
+    const compressed = canvas.toDataURL('image/jpeg', 0.85);
+    state.user.avatar = compressed;
+    // обновляем превью в модалке
+    const preview = document.getElementById('up-avatar-img');
+    if (preview) {
+      if (preview.tagName === 'IMG') preview.src = compressed;
+      else preview.outerHTML = `<img id="up-avatar-img" src="${compressed}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`;
+    }
+    // пушим в облако если подключено
+    if (supa && currentAgentRow) {
+      supa.from('agents').update({ avatar_url: compressed }).eq('id', currentAgentRow.id)
+        .then(({ error }) => { if (error) console.warn('avatar push:', error); });
+    }
+    saveState(state);
+  } catch(e) {
+    console.error('uploadAvatar:', e);
+    alert('Не удалось загрузить фото');
+  }
+}
+function removeAvatar() {
+  state.user.avatar = null;
+  if (supa && currentAgentRow) {
+    supa.from('agents').update({ avatar_url: null }).eq('id', currentAgentRow.id)
+      .then(({ error }) => { if (error) console.warn('avatar remove:', error); });
+  }
+  saveState(state);
+  editProfile();
 }
 function saveProfile() {
   state.user.name = document.getElementById('up-name').value;
@@ -2889,6 +2982,13 @@ function initSupabase() {
 async function onAuthLogin(authUser) {
   syncStatus = 'syncing'; renderTopbar();
   try {
+    // ВАЖНО: если пользователь сменился — чистим локальный state чтобы данные предыдущего не «прилипли»
+    const lastAuthId = localStorage.getItem('lastAuthUserId');
+    if (lastAuthId && lastAuthId !== authUser.id) {
+      clearLocalUserState();
+    }
+    localStorage.setItem('lastAuthUserId', authUser.id);
+
     let { data: agent, error } = await supa.from('agents').select('*').eq('auth_user_id', authUser.id).maybeSingle();
     if (error) console.error('agents fetch:', error);
     let isNewAgent = false;
@@ -2900,10 +3000,12 @@ async function onAuthLogin(authUser) {
       const ins = await supa.from('agents').insert({
         auth_user_id: authUser.id,
         name: meta.name || state.user.name || authUser.email.split('@')[0],
-        role: meta.role || 'Директор',
+        role: 'Агент', // безопасность: при первом входе всегда Агент. Повышает Директор через UI
         city: state.user.city || 'Сочи',
         phone: meta.phone || '',
         referred_by_code: pendingRef,
+        consent_at: meta.consent_at || new Date().toISOString(),
+        consent_version: meta.consent_version || '2026-06-14',
       }).select().maybeSingle();
       agent = ins.data;
       if (ins.error) { alert('Ошибка создания профиля агента: ' + ins.error.message); return; }
@@ -2943,7 +3045,15 @@ async function cloudSignUp(email, password, name, role) {
   if (!supa) initSupabase();
   const { data, error } = await supa.auth.signUp({
     email, password,
-    options: { data: { name, role, phone: state.user.phone || '' } }
+    options: {
+      data: {
+        name,
+        role: 'Агент', // безопасность: при signup всегда Агент, повышение — через Директора
+        phone: state.user.phone || '',
+        consent_at: new Date().toISOString(),
+        consent_version: '2026-06-14'
+      }
+    }
   });
   if (error) { alert('Регистрация: ' + error.message); return false; }
   alert('Готово. Проверьте почту ' + email + ' — там письмо для подтверждения. После подтверждения войдите.');
@@ -2958,8 +3068,32 @@ async function cloudSignIn(email, password) {
 async function cloudSignOut() {
   if (!supa) return;
   await supa.auth.signOut();
+  // ВАЖНО: очищаем локальный state чтобы данные предыдущего пользователя не «прилипли» к следующему
+  clearLocalUserState();
   state.user.cloudConnected = false;
+  state.user.avatar = null;
+  state.user.email = '';
   saveState(state);
+  currentAgentRow = null;
+  render();
+}
+function clearLocalUserState() {
+  // очищаем чувствительные данные перед сменой аккаунта
+  state.clients = [];
+  state.properties = [];
+  state.tasks = [];
+  state.deals = [];
+  state.partnerDeals = [];
+  state.referrals = [];
+  state.tgChats = [];
+  state.broadcasts = [];
+  state.agentsFull = [];
+  state.agents = [];
+  state.agentPhones = {};
+  // pushQueue тоже — иначе через 1 сек упадёт push несуществующих данных
+  if (typeof pushQueue !== 'undefined') {
+    Object.keys(pushQueue).forEach(k => pushQueue[k] = []);
+  }
 }
 
 /* ============================== SUPABASE: SYNC ============================== */
@@ -3085,19 +3219,21 @@ function openCloudLogin() {
     <h2>Облако: вход</h2>
     <p class="meta" style="margin-bottom: 14px;">Войдите чтобы данные синхронизировались между всеми устройствами.</p>
     <div class="tabs" style="margin-bottom: 14px;">
-      <button class="tab active" onclick="document.getElementById('cl-mode').value='in'; document.getElementById('cl-name-field').style.display='none'; document.getElementById('cl-role-field').style.display='none'; document.getElementById('cl-submit').textContent='Войти';">Войти</button>
-      <button class="tab" onclick="document.getElementById('cl-mode').value='up'; document.getElementById('cl-name-field').style.display='block'; document.getElementById('cl-role-field').style.display='block'; document.getElementById('cl-submit').textContent='Зарегистрироваться';">Регистрация</button>
+      <button class="tab active" onclick="document.getElementById('cl-mode').value='in'; document.getElementById('cl-name-field').style.display='none'; document.getElementById('cl-consent-field').style.display='none'; document.getElementById('cl-submit').textContent='Войти';">Войти</button>
+      <button class="tab" onclick="document.getElementById('cl-mode').value='up'; document.getElementById('cl-name-field').style.display='block'; document.getElementById('cl-consent-field').style.display='block'; document.getElementById('cl-submit').textContent='Зарегистрироваться';">Регистрация</button>
     </div>
     <input id="cl-mode" type="hidden" value="in">
     <div class="field"><label>Email</label><input id="cl-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
     <div class="field"><label>Пароль</label><input id="cl-password" type="password" autocomplete="current-password" placeholder="минимум 6 знаков"></div>
     <div class="field" id="cl-name-field" style="display:none;"><label>Имя</label><input id="cl-name" value="${state.user.name||''}"></div>
-    <div class="field" id="cl-role-field" style="display:none;"><label>Роль</label>
-      <select id="cl-role">
-        <option>Агент</option>
-        <option>Руководитель отдела</option>
-        <option selected>Директор</option>
-      </select>
+    <div id="cl-consent-field" style="display:none; padding: 12px; background: var(--surface-2); border-radius: 8px; margin-bottom: 14px;">
+      <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size: 12px; line-height: 1.45;">
+        <input id="cl-consent" type="checkbox" style="margin-top: 3px; flex-shrink: 0;">
+        <span style="color: var(--text);">Я согласен на обработку моих персональных данных в соответствии с
+          <a href="privacy.html" target="_blank" style="color: var(--accent);">Политикой конфиденциальности</a>
+          (152-ФЗ). Подтверждаю что мне исполнилось 18 лет.
+        </span>
+      </label>
     </div>
     <button id="cl-submit" class="btn" onclick="submitCloudAuth()">Войти</button>
   `);
@@ -3111,9 +3247,11 @@ async function submitCloudAuth() {
     const ok = await cloudSignIn(email, password);
     if (ok) closeModal();
   } else {
+    const consent = document.getElementById('cl-consent')?.checked;
+    if (!consent) { alert('Для регистрации требуется согласие на обработку персональных данных'); return; }
     const name = document.getElementById('cl-name').value.trim() || email.split('@')[0];
-    const role = document.getElementById('cl-role').value;
-    const ok = await cloudSignUp(email, password, name, role);
+    // Роль при самостоятельной регистрации всегда «Агент» — повышает Директор отдельно
+    const ok = await cloudSignUp(email, password, name, 'Агент');
     if (ok) closeModal();
   }
 }
@@ -3268,7 +3406,7 @@ function fireReminder(d) {
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
       const n = new Notification('CRM Агента · ' + time, {
-        body: d.title, icon: 'icon.svg', tag: d.id, badge: 'icon.svg',
+        body: d.title, icon: 'icons/icon-192.png', tag: d.id, badge: 'icons/icon-192.png',
       });
       n.onclick = () => { window.focus(); try { eval(d.openFn); } catch(e){} n.close(); };
     } catch(e) { console.warn(e); }
@@ -3299,6 +3437,25 @@ function showReminderBanner(d, time) {
 render();
 initSupabase();
 initReminders();
+
+/* ============================== SERVICE WORKER ============================== */
+// Регистрация SW для offline-режима и быстрой загрузки повторных визитов
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      // Если есть новая версия — обновляемся
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', () => {
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            console.log('Доступна новая версия приложения');
+          }
+        });
+      });
+    }).catch(err => console.warn('SW register failed:', err));
+  });
+}
 </script>
 </body>
 </html>
