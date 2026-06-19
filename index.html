@@ -674,19 +674,22 @@ function viewLocked() {
   if (!authChecked) {
     return `
       <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height: 60vh; padding: 40px 20px; text-align:center;">
-        <div style="width: 56px; height: 56px; border-radius: 14px; background: var(--surface); display:flex; align-items:center; justify-content:center; font-size: 28px; margin-bottom: 16px;">⏳</div>
-        <h2 style="margin: 0 0 6px;">Проверка входа...</h2>
-        <p class="meta">Секунду, проверяем сессию</p>
-      </div>`;
+        <div class="lock-spinner"></div>
+        <p class="meta" style="margin-top: 16px;">Проверяем сессию...</p>
+      </div>
+      <style>
+        .lock-spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--surface-2); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+      </style>`;
   }
   return `
     <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height: 70vh; padding: 40px 20px; text-align:center;">
-      <div style="width: 72px; height: 72px; border-radius: 18px; background: var(--surface); display:flex; align-items:center; justify-content:center; font-size: 36px; margin-bottom: 18px;">🔒</div>
-      <h2 style="margin: 0 0 10px; font-size: 22px;">Войдите в аккаунт</h2>
-      <p class="meta" style="max-width: 320px; margin: 0 0 24px;">Ваши клиенты, объекты и сделки защищены — мы не показываем их без подтверждения сессии.</p>
+      <div style="width: 72px; height: 72px; border-radius: 18px; background: var(--surface); display:flex; align-items:center; justify-content:center; font-size: 32px; margin-bottom: 20px;">🔒</div>
+      <h2 style="margin: 0 0 10px; font-size: 22px; letter-spacing: -.3px;">Войдите в аккаунт</h2>
+      <p class="meta" style="max-width: 320px; margin: 0 0 24px;">Клиенты, объекты и сделки защищены — без подтверждения сессии они не показываются на устройстве.</p>
       <button class="btn" style="max-width: 280px;" onclick="openCloudLogin()">Войти / Регистрация</button>
       <p class="meta" style="margin-top: 24px; font-size: 11px; max-width: 320px;">
-        Если хочешь использовать приложение офлайн без облака — <a href="#" onclick="event.preventDefault(); useOfflineMode()" style="color: var(--accent);">включить локальный режим</a>
+        Локальный режим без облака — <a href="#" onclick="event.preventDefault(); useOfflineMode()" style="color: var(--accent);">включить</a>
       </p>
     </div>`;
 }
@@ -2935,6 +2938,7 @@ function clientFromDB(r) {
     priority: isPriority,
     responsible: r.responsible_name || '',
     created: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 function propToDB(p) {
@@ -2960,6 +2964,7 @@ function propFromDB(r) {
     agent: r.agent_name || '', agentPhone: r.agent_phone || '',
     photos: Array.isArray(r.photos) ? r.photos : [],
     nextEvent: null, nextEventTitle: '',
+    updatedAt: r.updated_at,
   };
 }
 function taskToDB(t) {
@@ -2969,7 +2974,7 @@ function taskToDB(t) {
   };
 }
 function taskFromDB(r) {
-  return { id: r.id, title: r.title, when: r.when_at, done: !!r.done, clientId: r.client_id };
+  return { id: r.id, title: r.title, when: r.when_at, done: !!r.done, clientId: r.client_id, updatedAt: r.updated_at };
 }
 function dealToDB(d) {
   return {
@@ -2985,6 +2990,7 @@ function dealFromDB(r) {
     id: r.id, object: r.object_text, client: r.client_name,
     date: r.date, price: r.price || 0, commission: r.commission || 0,
     expenses: r.expenses || 0, received: r.received || 0, note: r.note || '',
+    updatedAt: r.updated_at,
   };
 }
 function partnerDealToDB(d) {
@@ -3018,7 +3024,7 @@ function tgChatToDB(c) {
   };
 }
 function tgChatFromDB(r) {
-  return { id: r.id, title: r.title || r.chat_id, chatId: r.chat_id };
+  return { id: r.id, title: r.title || r.chat_id, chatId: r.chat_id, updatedAt: r.updated_at };
 }
 function broadcastToDB(b) {
   // ключевой момент: в Supabase в chat_id кладём настоящий Telegram chat_id, а не локальный UUID канала
@@ -3047,6 +3053,7 @@ function broadcastFromDB(r) {
     sentAt: r.sent_at,
     errorText: r.error_text,
     createdBy: r.created_by,
+    updatedAt: r.updated_at,
   };
 }
 function agentToDB(name, phone, role) {
@@ -3159,15 +3166,14 @@ function handleRealtimeChange(type, payload) {
     const mapFn = ({ client: clientFromDB, property: propFromDB, task: taskFromDB, deal: dealFromDB, tgchat: tgChatFromDB, broadcast: broadcastFromDB })[type];
     if (!stateKey || !mapFn) return;
     const list = state[stateKey] || [];
-    if (payload.eventType === 'DELETE') {
-      const id = payload.old?.id;
-      if (id) state[stateKey] = list.filter(x => x.id !== id);
+    const row = payload.new || payload.old;
+    if (!row?.id) return;
+    // Soft delete: UPDATE с deleted_at != null = удалить из локального стейта
+    if (payload.eventType === 'DELETE' || (payload.new && payload.new.deleted_at)) {
+      state[stateKey] = list.filter(x => x.id !== row.id);
     } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-      const row = payload.new;
-      if (!row || isTombstoned(type, row.id)) return;
-      const mapped = mapFn(row);
-      // если был — заменяем, не было — добавляем
-      const idx = list.findIndex(x => x.id === row.id);
+      const mapped = mapFn(payload.new);
+      const idx = list.findIndex(x => x.id === payload.new.id);
       if (idx >= 0) list[idx] = mapped;
       else list.push(mapped);
       state[stateKey] = list;
@@ -3316,25 +3322,52 @@ async function syncPullAll() {
       supa.from('tg_chats').select('*'),
       supa.from('tg_broadcasts').select('*'),
     ]);
-    // MERGE стратегия: серверные данные имеют приоритет, локальные «лишние» пушим в облако
-    // ВАЖНО: отфильтровываем «надгробия» — записи которые пользователь удалил, но delete не дошёл
+    // MERGE: серверная RLS уже скрыла deleted_at-записи и удалённых клиентов другого агента
+    // Логика: last-write-wins по updated_at
+    // - Если server.updated_at >= local.updated_at → server wins
+    // - Если local.updated_at > server.updated_at → local wins, пушим в облако
+    // - Если запись только локально и не имеет server-id (новая) → пушим
     function mergeLists(localList, serverList, mapper, pushType) {
-      // отфильтровываем серверные записи которые помечены как удалённые локально
-      const filteredServer = (serverList||[]).filter(r => !isTombstoned(pushType, r.id));
-      // повторяем серверное удаление для tombstoned записей которые всё ещё на сервере
-      (serverList||[]).filter(r => isTombstoned(pushType, r.id)).forEach(r => {
-        syncDelete(pushType, r.id);
+      const serverById = new Map((serverList||[]).map(r => [r.id, r]));
+      const localById = new Map((localList||[]).map(c => [c.id, c]));
+      const allIds = new Set([...serverById.keys(), ...localById.keys()]);
+      const result = [];
+      allIds.forEach(id => {
+        const s = serverById.get(id);
+        const l = localById.get(id);
+        if (s && !l) {
+          result.push(mapper(s));
+        } else if (!s && l) {
+          // Локально есть, на сервере нет. Возможные причины:
+          // (a) запись только что создана локально, ещё не запушена — пушим
+          // (b) запись была удалена другим устройством через soft_delete — отбрасываем локальную
+          // (c) первая синхронизация после миграции на новую архитектуру — пушим, чтобы перенести
+          if (!l.updatedAt) {
+            // (c) — локальная запись из старой эпохи без updated_at, переносим в облако
+            queuePush(pushType, l);
+            result.push(l);
+          } else {
+            const localAge = Date.now() - new Date(l.updatedAt).getTime();
+            if (localAge < 30000) {
+              // (a) — свежая, пушим
+              queuePush(pushType, l);
+              result.push(l);
+            }
+            // (b) — старая локальная без серверной пары → сервер удалил, локальное чистим (не добавляем в result)
+          }
+        } else if (s && l) {
+          // оба есть — last-write-wins
+          const sTs = s.updated_at ? new Date(s.updated_at).getTime() : 0;
+          const lTs = l.updatedAt ? new Date(l.updatedAt).getTime() : 0;
+          if (lTs > sTs + 500) { // 500мс зазор чтобы свои же только что pushed не пересохранять
+            queuePush(pushType, l);
+            result.push(l);
+          } else {
+            result.push(mapper(s));
+          }
+        }
       });
-      const serverIds = new Set(filteredServer.map(r => r.id));
-      const localOnly = (localList||[])
-        .filter(c => !serverIds.has(c.id))
-        .filter(c => !isTombstoned(pushType, c.id)); // на случай если эта запись была удалена локально
-      // отправляем локальные «лишние» в облако
-      localOnly.forEach(obj => queuePush(pushType, obj));
-      const merged = [...filteredServer.map(mapper), ...localOnly];
-      // дедуп по id на всякий случай
-      const seen = new Set();
-      return merged.filter(r => r.id && !seen.has(r.id) && seen.add(r.id));
+      return result;
     }
     if (cl.data) state.clients = mergeLists(state.clients, cl.data, clientFromDB, 'client');
     if (pr.data) {
@@ -3376,11 +3409,15 @@ async function syncPullAll() {
     }
     saveState(state);
     syncStatus = 'synced';
+    // повторяем удаления, которые не дошли при оффлайне
+    retryPendingDeletes();
   } catch (e) { console.error('pullAll:', e); syncStatus = 'error'; }
   renderTopbar();
 }
 
 function queuePush(type, obj) {
+  // помечаем локальное updated_at чтобы при merge выиграть у более старой серверной версии
+  obj.updatedAt = new Date().toISOString();
   if (!supa || !currentAgentRow) return;
   pushQueue.set(type + ':' + obj.id, { type, obj });
   syncStatus = 'syncing'; renderTopbar();
@@ -3421,59 +3458,76 @@ function showSyncError() {
   if (!syncLastError) { alert('Последняя синхронизация прошла без ошибок'); return; }
   alert('Ошибка синхронизации:\n\n' + syncLastError + '\n\nЧасто помогает:\n1. Запустить supabase-fix-rls.sql в SQL Editor\n2. Проверить вход в облако\n3. Нажать «Обновить» в Профиле');
 }
-// «Надгробия» удалённых записей — чтобы синхронизация не возвращала их с сервера, если delete не дошёл по RLS
-// Структура: { client: { id1: timestamp, id2: timestamp }, property: {...}, ... }
-let tombstones = JSON.parse(localStorage.getItem('tombstones') || '{}');
-function saveTombstones() { localStorage.setItem('tombstones', JSON.stringify(tombstones)); }
-function addTombstone(type, recordId) {
-  if (!tombstones[type]) tombstones[type] = {};
-  tombstones[type][recordId] = Date.now();
-  saveTombstones();
+// SOFT DELETE архитектура:
+// Удаление = установить deleted_at на сервере. Сервер — единый источник правды.
+// Никаких локальных «надгробий» больше не нужно — Realtime/Pull увидят deleted_at и удалят везде.
+// Очередь отложенных правок при удалении — отменяется.
+
+// Локальная очередь «висящих» удалений (для оффлайна) — повторим при следующей синхронизации
+let pendingDeletes = JSON.parse(localStorage.getItem('pendingDeletes') || '{}');
+function savePendingDeletes() { localStorage.setItem('pendingDeletes', JSON.stringify(pendingDeletes)); }
+function queueDelete(type, recordId) {
+  if (!pendingDeletes[type]) pendingDeletes[type] = {};
+  pendingDeletes[type][recordId] = Date.now();
+  savePendingDeletes();
 }
-function isTombstoned(type, recordId) {
-  return !!(tombstones[type] && tombstones[type][recordId]);
-}
-function clearTombstoneIfStale(type, recordId) {
-  // удалили локальное надгробие если успешно удалили с сервера (защита от вечного бана id)
-  if (tombstones[type]) {
-    delete tombstones[type][recordId];
-    saveTombstones();
+function unqueueDelete(type, recordId) {
+  if (pendingDeletes[type]) {
+    delete pendingDeletes[type][recordId];
+    savePendingDeletes();
   }
 }
+// Совместимость: оставляем заглушки для старого кода
+function isTombstoned() { return false; }
+function clearTombstones() { pendingDeletes = {}; savePendingDeletes(); }
+
+const tableNames = {
+  client: 'clients', property: 'properties', task: 'tasks', deal: 'deals',
+  partnerDeal: 'partner_deals', tgchat: 'tg_chats', broadcast: 'tg_broadcasts'
+};
 
 async function syncDelete(type, recordId) {
-  // СНАЧАЛА ставим tombstone — чтобы при любом исходе мы не подтянули запись обратно из БД
-  addTombstone(type, recordId);
-  // ВАЖНО: убираем из pushQueue — иначе отложенный upsert через 1с восстановит удалённое
+  // Удаляем из локального стейта мгновенно (опт. UI), отменяем pending upsert
   if (pushQueue && pushQueue.delete) {
     pushQueue.delete(type + ':' + recordId);
   }
-  if (!supa || !currentAgentRow) return;
-  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', tgchat: 'tg_chats', broadcast: 'tg_broadcasts' };
-  if (!tables[type]) return;
+  if (!supa || !currentAgentRow) {
+    // оффлайн — кидаем в очередь
+    queueDelete(type, recordId);
+    return;
+  }
+  const tableName = tableNames[type];
+  if (!tableName) return;
   syncStatus = 'syncing'; renderTopbar();
   try {
-    const { error, data } = await supa.from(tables[type]).delete().eq('id', recordId).select();
+    // soft_delete RPC — single source of truth для удалений
+    const { data, error } = await supa.rpc('soft_delete', { p_table: tableName, p_id: recordId });
     if (error) {
-      console.warn('syncDelete error', type, recordId, error);
+      console.warn('syncDelete RPC error', type, recordId, error);
+      // оффлайн или RLS — кидаем в pending для повторной попытки
+      queueDelete(type, recordId);
       syncStatus = 'error';
-      // оставляем tombstone — повторим удаление при следующем syncPullAll
-    } else if (!data || data.length === 0) {
-      // RLS-фильтр пропустил delete без ошибки, но 0 строк удалено — нет прав
-      console.warn('syncDelete blocked by RLS', type, recordId);
-      syncStatus = 'synced'; // запись отфильтрована, скрываем локально через tombstone
     } else {
-      // успех
+      unqueueDelete(type, recordId);
       syncStatus = 'synced';
     }
   } catch(e) {
-    console.warn('syncDelete exception', e); syncStatus = 'error';
+    console.warn('syncDelete exception', e);
+    queueDelete(type, recordId);
+    syncStatus = 'error';
   }
   renderTopbar();
 }
 
-// При логауте чистим надгробия чтобы они не блокировали данные нового пользователя
-function clearTombstones() { tombstones = {}; saveTombstones(); }
+// При входе/sync — повторяем отложенные удаления (для оффлайн-сценария)
+async function retryPendingDeletes() {
+  if (!supa || !currentAgentRow) return;
+  for (const type of Object.keys(pendingDeletes)) {
+    for (const id of Object.keys(pendingDeletes[type] || {})) {
+      await syncDelete(type, id);
+    }
+  }
+}
 
 /* ============================== SUPABASE: UI ============================== */
 function openCloudLogin() {
@@ -3694,6 +3748,63 @@ function showReminderBanner(d, time) {
   // автоматически убрать через 45 секунд
   setTimeout(() => banner.remove(), 45000);
 }
+
+/* ============================== TOAST (ненавязчивые уведомления) ============================== */
+// Используем вместо alert() для несущественных событий. alert() остаётся для критики (подтверждения удаления и т.п.)
+function toast(message, kind = 'info', durationMs = 4000) {
+  let layer = document.getElementById('toast-layer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.id = 'toast-layer';
+    layer.style.cssText = 'position:fixed; left:0; right:0; bottom: calc(80px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; align-items:center; gap:8px; z-index: 9999; pointer-events:none;';
+    document.body.appendChild(layer);
+  }
+  const el = document.createElement('div');
+  const bg = kind === 'error' ? 'var(--danger)' : kind === 'success' ? 'var(--success)' : 'var(--surface-2)';
+  el.style.cssText = `background:${bg}; color: var(--text); padding: 10px 16px; border-radius: 10px; font-size: 13px; max-width: 90%; box-shadow: 0 6px 24px rgba(0,0,0,.35); pointer-events: auto; animation: tslide .25s ease-out;`;
+  el.textContent = message;
+  layer.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, durationMs);
+}
+// добавляем CSS-анимацию для toast однократно
+if (!document.getElementById('toast-style')) {
+  const s = document.createElement('style');
+  s.id = 'toast-style';
+  s.textContent = '@keyframes tslide { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }';
+  document.head.appendChild(s);
+}
+
+/* ============================== ONLINE/OFFLINE ============================== */
+let isOnline = navigator.onLine;
+function updateOnlineStatus() {
+  const wasOffline = !isOnline;
+  isOnline = navigator.onLine;
+  if (isOnline && wasOffline) {
+    toast('Сеть восстановлена — синхронизируем', 'success', 2500);
+    // мгновенно подтягиваем изменения и повторяем pending удаления
+    if (supa && currentAgentRow) {
+      flushPush().then(() => syncPullAll());
+    }
+  } else if (!isOnline) {
+    toast('Нет сети — изменения сохраняются локально и отправятся при подключении', 'info', 3500);
+  }
+  renderTopbar();
+}
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+
+/* ============================== GLOBAL ERROR BOUNDARY ============================== */
+// чтобы непойманная ошибка в одной кнопке не ломала всё приложение
+window.addEventListener('error', (e) => {
+  console.error('global error:', e.error || e.message);
+  // не показываем toast на каждую — иначе зальёт спамом. Показываем только если приложение реально упало.
+  if (e.error && e.error.message && !/(ResizeObserver|aborted|Failed to fetch)/i.test(e.error.message)) {
+    toast('Произошла ошибка. Если повторяется — перезагрузите страницу', 'error');
+  }
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('unhandled promise:', e.reason);
+});
 
 /* ============================== INIT ============================== */
 render();
