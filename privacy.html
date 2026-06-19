@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#14182A">
+<title>Политика конфиденциальности · CRM Агента</title>
+<link rel="icon" type="image/png" href="icon.png?v=20260616">
+<style>
+:root {
+  --bg: #0E0E10;
+  --surface: #1C1C1E;
+  --surface-2: #2C2C2E;
+  --text: #ffffff;
+  --text-muted: #8E8E93;
+  --accent: #C9A36A;
+  --border: #2C2C2E;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body {
+  margin: 0; padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  background: var(--bg); color: var(--text);
+  font-size: 15px; line-height: 1.55;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 60px; }
+.top { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 0.5px solid var(--border); }
+.top img { width: 32px; height: 32px; border-radius: 7px; }
+.top a { color: var(--accent); text-decoration: none; font-size: 14px; margin-left: auto; }
+h1 { font-size: 24px; font-weight: 600; margin: 0 0 8px; letter-spacing: -.3px; }
+h2 { font-size: 18px; font-weight: 600; margin: 28px 0 10px; color: var(--text); letter-spacing: -.2px; }
+.updated { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
+p { margin: 0 0 14px; color: var(--text); }
+ul { margin: 0 0 14px; padding-left: 22px; color: var(--text); }
+li { margin-bottom: 6px; }
+strong { color: var(--text); font-weight: 600; }
+a { color: var(--accent); }
+.muted { color: var(--text-muted); font-size: 13px; }
+.section { background: var(--surface); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+.contact { background: linear-gradient(135deg, rgba(201,163,106,.12), rgba(201,163,106,.04)); padding: 18px 20px; border-radius: 12px; margin-top: 28px; }
+.contact h2 { margin-top: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="top">
+  <img src="icon.png?v=20260616" alt="">
+  <strong>CRM Агента</strong>
+  <a href="index.html">← В приложение</a>
+</div>
+
+<h1>Политика конфиденциальности</h1>
+<p class="updated">Последнее обновление: 14 июня 2026 года</p>
+
+<div class="section">
+<h2>1. Кто мы</h2>
+<p>Приложение <strong>«CRM Агента»</strong> (далее — «Приложение») — программный продукт для агентов и руководителей агентств недвижимости. Оператор персональных данных: <strong>ИП Хрусталева Алёна</strong> (далее — «Оператор»). Контакты: <a href="mailto:info@каталог-сочи.рф">info@каталог-сочи.рф</a>.</p>
+</div>
+
+<div class="section">
+<h2>2. Какие данные собирает Приложение</h2>
+
+<p><strong>Данные пользователя-агента:</strong></p>
+<ul>
+<li>ФИО и роль (Агент, Руководитель отдела, Директор)</li>
+<li>Email и пароль (через Supabase Authentication)</li>
+<li>Номер мобильного телефона</li>
+<li>Город работы</li>
+</ul>
+
+<p><strong>Данные о клиентах, которые добавляет агент:</strong></p>
+<ul>
+<li>ФИО, телефон клиента</li>
+<li>Бюджет, запрос, район поиска</li>
+<li>Статус, комментарии, история взаимодействия</li>
+</ul>
+
+<p><strong>Данные об объектах недвижимости:</strong></p>
+<ul>
+<li>Название ЖК, адрес, цена, площадь, фото</li>
+<li>Имя и телефон собственника (приватное поле, видно только агенту, добавившему объект, и Директору)</li>
+</ul>
+
+<p><strong>Технические данные:</strong></p>
+<ul>
+<li>IP-адрес, версия операционной системы и устройства</li>
+<li>Логи действий в приложении для отладки и аудита</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>3. Цели обработки</h2>
+<ul>
+<li>Ведение учёта клиентов и объектов в CRM</li>
+<li>Предоставление функциональности приложения</li>
+<li>Синхронизация данных между устройствами пользователя</li>
+<li>Отправка уведомлений о работе с приложением</li>
+<li>Улучшение качества сервиса</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>4. Правовое основание</h2>
+<p>Обработка осуществляется на основании:</p>
+<ul>
+<li>Согласия пользователя (ст. 6 Федерального закона № 152-ФЗ «О персональных данных»)</li>
+<li>Исполнения договора с пользователем (Пользовательское соглашение)</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>5. Где хранятся данные</h2>
+<p>Данные хранятся на серверах Supabase Inc. (центр обработки данных во Франкфурте, Германия). Подробнее о мерах безопасности: <a href="https://supabase.com/security" target="_blank">supabase.com/security</a>.</p>
+<p>Резервные копии создаются автоматически и хранятся не более 30 дней.</p>
+</div>
+
+<div class="section">
+<h2>6. Передача данных третьим лицам</h2>
+<p>Мы не продаём и не передаём ваши персональные данные третьим лицам, за исключением:</p>
+<ul>
+<li>Платёжных систем (СБП, ЮKassa) — для обработки платежей подписки. Передаётся только сумма и идентификатор платежа.</li>
+<li>Налоговых органов — по требованию законодательства РФ.</li>
+<li>Поставщиков услуг хостинга (Supabase) — в рамках их соглашений о защите данных.</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>7. Передача в Telegram</h2>
+<p>При настройке Telegram-рассылки пользователь сам подключает свой Telegram-канал. Приложение передаёт в чат только данные тех объектов, которые пользователь явно отметил к рассылке.</p>
+<p>Личные данные клиентов и собственников в Telegram <strong>не передаются никогда</strong>.</p>
+</div>
+
+<div class="section">
+<h2>8. Срок хранения</h2>
+<ul>
+<li>Данные активных аккаунтов — пока аккаунт активен</li>
+<li>Данные после удаления аккаунта — удаляются в течение 30 дней</li>
+<li>Резервные копии — хранятся максимум 90 дней</li>
+<li>Логи действий — 12 месяцев</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>9. Права пользователей</h2>
+<p>Вы имеете право:</p>
+<ul>
+<li>Получить информацию об обрабатываемых данных</li>
+<li>Потребовать исправления неточных данных</li>
+<li>Удалить аккаунт в один клик через Профиль → «Удалить аккаунт»</li>
+<li>Потребовать полного удаления, написав на <a href="mailto:info@каталог-сочи.рф">info@каталог-сочи.рф</a></li>
+<li>Отозвать согласие на обработку</li>
+</ul>
+<p>Запросы рассматриваются в течение 30 дней.</p>
+</div>
+
+<div class="section">
+<h2>10. Cookies и локальное хранилище</h2>
+<p>Приложение использует localStorage браузера для кэша данных и настроек. Это не cookies, и они не передаются третьим лицам.</p>
+</div>
+
+<div class="section">
+<h2>11. Защита данных</h2>
+<ul>
+<li>Шифрование данных при передаче (HTTPS/TLS)</li>
+<li>Шифрование при хранении (AES-256 на стороне Supabase)</li>
+<li>Row Level Security — пользователь видит только свои данные на уровне БД</li>
+<li>Аудит-лог критических действий (вход, удаление, изменение роли)</li>
+<li>Фото объектов хранятся в приватном бакете с одноразовыми ссылками (signed URL, TTL 1 час)</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>12. Дети</h2>
+<p>Приложение не предназначено для лиц младше 18 лет. Мы намеренно не собираем данные несовершеннолетних.</p>
+</div>
+
+<div class="section">
+<h2>13. Изменения</h2>
+<p>Мы можем обновлять политику. Существенные изменения будут опубликованы в приложении за 14 дней до вступления в силу.</p>
+</div>
+
+<div class="contact">
+<h2>14. Контакты</h2>
+<p>Вопросы по обработке персональных данных:</p>
+<ul>
+<li>Email: <a href="mailto:info@каталог-сочи.рф">info@каталог-сочи.рф</a></li>
+<li>Telegram: <a href="https://t.me/CRM_Agenta_bot" target="_blank">@CRM_Agenta_bot</a></li>
+<li>Сайт: <a href="https://app.каталог-сочи.рф">app.каталог-сочи.рф</a></li>
+</ul>
+<p class="muted">Жалобы на нарушение прав можно направить в Роскомнадзор: <a href="https://rkn.gov.ru" target="_blank">rkn.gov.ru</a></p>
+</div>
+
+</div>
+</body>
+</html>
