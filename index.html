@@ -3055,32 +3055,59 @@ function agentToDB(name, phone, role) {
 
 /* ============================== SUPABASE: AUTH ============================== */
 // Замок — пока не подтверждена сессия Supabase, прячем все данные приложения
-let authChecked = false; // true когда мы хотя бы раз спросили Supabase про сессию
+let authChecked = false;     // true когда мы хотя бы раз спросили Supabase про сессию
+let hasValidSession = false; // true если есть активная сессия (даже до полного pull-а данных)
 function shouldLockUI() {
-  // Заблокировать UI если: устройство хоть раз было подключено к облаку, но сейчас нет активной сессии
-  // Это защищает от показа кеша на чужом устройстве и при сменe юзера
-  if (!state.user.cloudConnected) return false; // никогда не подключались — это offline режим
-  if (!authChecked) return true; // ещё не проверили — пока скрываем
-  return !currentAgentRow; // подключались раньше, но сейчас нет сессии — заблокировать
+  if (!state.user.cloudConnected) return false; // никогда не подключались — offline-режим
+  if (!authChecked) return true;                 // ещё не проверили — скрываем
+  if (hasValidSession) return false;             // сессия валидна — показываем кеш сразу, данные подтянутся фоном
+  return true;                                    // подключались раньше, но сессии нет — замок
 }
 
 function initSupabase() {
   if (!window.supabase) { console.warn('Supabase JS не загружен'); authChecked = true; render(); return; }
   try {
-    supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true },
+      realtime: { params: { eventsPerSecond: 5 } },
+    });
+    // Защитный timeout — если getSession никогда не отвечает (нет сети, баг и т.п.), снимаем блок через 3с
+    const failsafe = setTimeout(() => {
+      if (!authChecked) {
+        console.warn('auth check timeout — снимаю блок');
+        authChecked = true;
+        render();
+      }
+    }, 3000);
     supa.auth.getSession().then(({ data }) => {
+      clearTimeout(failsafe);
       if (data?.session?.user) {
-        onAuthLogin(data.session.user);
+        hasValidSession = true;
+        authChecked = true;
+        render(); // показываем UI с кешем сразу
+        onAuthLogin(data.session.user); // pull данных и подписка — в фоне
       } else {
         authChecked = true;
         render();
       }
+    }).catch(e => {
+      clearTimeout(failsafe);
+      console.warn('getSession error:', e);
+      authChecked = true;
+      render();
     });
     supa.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) onAuthLogin(session.user);
+      if (event === 'SIGNED_IN' && session?.user) {
+        hasValidSession = true;
+        authChecked = true;
+        render();
+        onAuthLogin(session.user);
+      }
       if (event === 'SIGNED_OUT') {
+        hasValidSession = false;
         currentAgentRow = null;
         syncStatus = 'offline';
+        unsubscribeRealtime();
         clearLocalUserState();
         clearTombstones();
         state.user.cloudConnected = false;
@@ -3092,6 +3119,62 @@ function initSupabase() {
       }
     });
   } catch (e) { console.error('initSupabase:', e); authChecked = true; render(); }
+}
+
+/* ============================== REALTIME: мгновенная синхронизация ============================== */
+let realtimeChannel = null;
+function subscribeRealtime() {
+  if (!supa || !currentAgentRow || realtimeChannel) return;
+  try {
+    realtimeChannel = supa
+      .channel('agent-' + currentAgentRow.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, handleRealtimeChange.bind(null, 'client'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'properties' }, handleRealtimeChange.bind(null, 'property'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, handleRealtimeChange.bind(null, 'task'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deals' }, handleRealtimeChange.bind(null, 'deal'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tg_chats' }, handleRealtimeChange.bind(null, 'tgchat'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tg_broadcasts' }, handleRealtimeChange.bind(null, 'broadcast'))
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') console.log('Realtime подключён');
+        if (status === 'CLOSED') console.warn('Realtime отключился');
+      });
+  } catch(e) { console.warn('subscribeRealtime:', e); }
+}
+function unsubscribeRealtime() {
+  if (realtimeChannel) {
+    try { supa.removeChannel(realtimeChannel); } catch(e) {}
+    realtimeChannel = null;
+  }
+}
+const stateMap = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', tgchat: 'tgChats', broadcast: 'broadcasts' };
+const fromDBMap = { client: typeof clientFromDB === 'function' ? clientFromDB : null,
+                    property: typeof propFromDB === 'function' ? propFromDB : null,
+                    task: typeof taskFromDB === 'function' ? taskFromDB : null,
+                    deal: typeof dealFromDB === 'function' ? dealFromDB : null,
+                    tgchat: typeof tgChatFromDB === 'function' ? tgChatFromDB : null,
+                    broadcast: typeof broadcastFromDB === 'function' ? broadcastFromDB : null };
+function handleRealtimeChange(type, payload) {
+  try {
+    const stateKey = stateMap[type];
+    const mapFn = ({ client: clientFromDB, property: propFromDB, task: taskFromDB, deal: dealFromDB, tgchat: tgChatFromDB, broadcast: broadcastFromDB })[type];
+    if (!stateKey || !mapFn) return;
+    const list = state[stateKey] || [];
+    if (payload.eventType === 'DELETE') {
+      const id = payload.old?.id;
+      if (id) state[stateKey] = list.filter(x => x.id !== id);
+    } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+      const row = payload.new;
+      if (!row || isTombstoned(type, row.id)) return;
+      const mapped = mapFn(row);
+      // если был — заменяем, не было — добавляем
+      const idx = list.findIndex(x => x.id === row.id);
+      if (idx >= 0) list[idx] = mapped;
+      else list.push(mapped);
+      state[stateKey] = list;
+    }
+    saveState(state);
+    render();
+  } catch(e) { console.warn('handleRealtimeChange:', e); }
 }
 
 async function onAuthLogin(authUser) {
@@ -3150,6 +3233,8 @@ async function onAuthLogin(authUser) {
     await syncPullAll();
     syncStatus = 'synced';
     authChecked = true;
+    hasValidSession = true;
+    subscribeRealtime();
     render();
   } catch (e) {
     console.error(e); syncStatus = 'error'; renderTopbar();
