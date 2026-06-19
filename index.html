@@ -594,7 +594,7 @@ function render() {
   renderContent();
   renderNav();
   renderSidebar();
-  document.getElementById('fab').style.display = ['crm','clients','properties','tasks','finance'].includes(route) ? 'flex' : 'none';
+  document.getElementById('fab').style.display = (!shouldLockUI() && ['crm','clients','properties','tasks','finance'].includes(route)) ? 'flex' : 'none';
 
   // восстанавливаем фокус и курсор
   if (focusInfo && focusInfo.id) {
@@ -660,6 +660,7 @@ function tabSub() {
 
 function renderContent() {
   const c = document.getElementById('content');
+  if (shouldLockUI()) { c.innerHTML = viewLocked(); c.scrollTop = 0; return; }
   if (route === 'home') c.innerHTML = viewHome();
   else if (route === 'properties') c.innerHTML = viewProperties();
   else if (route === 'clients') c.innerHTML = viewClients();
@@ -667,6 +668,35 @@ function renderContent() {
   else if (route === 'finance') c.innerHTML = viewFinance();
   else if (route === 'profile') c.innerHTML = viewProfile();
   c.scrollTop = 0;
+}
+
+function viewLocked() {
+  if (!authChecked) {
+    return `
+      <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height: 60vh; padding: 40px 20px; text-align:center;">
+        <div style="width: 56px; height: 56px; border-radius: 14px; background: var(--surface); display:flex; align-items:center; justify-content:center; font-size: 28px; margin-bottom: 16px;">⏳</div>
+        <h2 style="margin: 0 0 6px;">Проверка входа...</h2>
+        <p class="meta">Секунду, проверяем сессию</p>
+      </div>`;
+  }
+  return `
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height: 70vh; padding: 40px 20px; text-align:center;">
+      <div style="width: 72px; height: 72px; border-radius: 18px; background: var(--surface); display:flex; align-items:center; justify-content:center; font-size: 36px; margin-bottom: 18px;">🔒</div>
+      <h2 style="margin: 0 0 10px; font-size: 22px;">Войдите в аккаунт</h2>
+      <p class="meta" style="max-width: 320px; margin: 0 0 24px;">Ваши клиенты, объекты и сделки защищены — мы не показываем их без подтверждения сессии.</p>
+      <button class="btn" style="max-width: 280px;" onclick="openCloudLogin()">Войти / Регистрация</button>
+      <p class="meta" style="margin-top: 24px; font-size: 11px; max-width: 320px;">
+        Если хочешь использовать приложение офлайн без облака — <a href="#" onclick="event.preventDefault(); useOfflineMode()" style="color: var(--accent);">включить локальный режим</a>
+      </p>
+    </div>`;
+}
+
+function useOfflineMode() {
+  if (!confirm('Локальный режим: данные хранятся только на этом устройстве, не синхронизируются между устройствами и не защищены сессией. Продолжить?')) return;
+  state.user.cloudConnected = false;
+  saveState(state);
+  authChecked = true;
+  render();
 }
 
 function renderNav() {
@@ -3024,19 +3054,44 @@ function agentToDB(name, phone, role) {
 }
 
 /* ============================== SUPABASE: AUTH ============================== */
+// Замок — пока не подтверждена сессия Supabase, прячем все данные приложения
+let authChecked = false; // true когда мы хотя бы раз спросили Supabase про сессию
+function shouldLockUI() {
+  // Заблокировать UI если: устройство хоть раз было подключено к облаку, но сейчас нет активной сессии
+  // Это защищает от показа кеша на чужом устройстве и при сменe юзера
+  if (!state.user.cloudConnected) return false; // никогда не подключались — это offline режим
+  if (!authChecked) return true; // ещё не проверили — пока скрываем
+  return !currentAgentRow; // подключались раньше, но сейчас нет сессии — заблокировать
+}
+
 function initSupabase() {
-  if (!window.supabase) { console.warn('Supabase JS не загружен'); return; }
+  if (!window.supabase) { console.warn('Supabase JS не загружен'); authChecked = true; render(); return; }
   try {
     supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     supa.auth.getSession().then(({ data }) => {
-      if (data?.session?.user) onAuthLogin(data.session.user);
-      renderTopbar();
+      if (data?.session?.user) {
+        onAuthLogin(data.session.user);
+      } else {
+        authChecked = true;
+        render();
+      }
     });
     supa.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) onAuthLogin(session.user);
-      if (event === 'SIGNED_OUT') { currentAgentRow = null; syncStatus = 'offline'; render(); }
+      if (event === 'SIGNED_OUT') {
+        currentAgentRow = null;
+        syncStatus = 'offline';
+        clearLocalUserState();
+        clearTombstones();
+        state.user.cloudConnected = false;
+        state.user.avatar = null;
+        state.user.email = '';
+        saveState(state);
+        authChecked = true;
+        render();
+      }
     });
-  } catch (e) { console.error('initSupabase:', e); }
+  } catch (e) { console.error('initSupabase:', e); authChecked = true; render(); }
 }
 
 async function onAuthLogin(authUser) {
@@ -3094,9 +3149,12 @@ async function onAuthLogin(authUser) {
     saveState(state);
     await syncPullAll();
     syncStatus = 'synced';
+    authChecked = true;
     render();
   } catch (e) {
     console.error(e); syncStatus = 'error'; renderTopbar();
+    authChecked = true;
+    render();
     alert('Ошибка входа: ' + e.message);
   }
 }
@@ -3255,6 +3313,8 @@ async function flushPush() {
   for (const { type, obj } of items) {
     // если эта таблица ранее ругалась 3+ раз — не дёргаем больше до перезагрузки страницы
     if (failedPushTypes.has(type)) continue;
+    // НЕ пушим записи которые помечены как удалённые (tombstone) — иначе они «воскреснут»
+    if (isTombstoned(type, obj.id)) continue;
     try {
       const { error } = await supa.from(tables[type]).upsert(mappers[type](obj));
       if (error) {
@@ -3299,6 +3359,10 @@ function clearTombstoneIfStale(type, recordId) {
 async function syncDelete(type, recordId) {
   // СНАЧАЛА ставим tombstone — чтобы при любом исходе мы не подтянули запись обратно из БД
   addTombstone(type, recordId);
+  // ВАЖНО: убираем из pushQueue — иначе отложенный upsert через 1с восстановит удалённое
+  if (pushQueue && pushQueue.delete) {
+    pushQueue.delete(type + ':' + recordId);
+  }
   if (!supa || !currentAgentRow) return;
   const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', tgchat: 'tg_chats', broadcast: 'tg_broadcasts' };
   if (!tables[type]) return;
@@ -3308,13 +3372,13 @@ async function syncDelete(type, recordId) {
     if (error) {
       console.warn('syncDelete error', type, recordId, error);
       syncStatus = 'error';
-      // оставляем tombstone — повторим удаление при следующем pushDeletionRetries
+      // оставляем tombstone — повторим удаление при следующем syncPullAll
     } else if (!data || data.length === 0) {
       // RLS-фильтр пропустил delete без ошибки, но 0 строк удалено — нет прав
       console.warn('syncDelete blocked by RLS', type, recordId);
       syncStatus = 'synced'; // запись отфильтрована, скрываем локально через tombstone
     } else {
-      // успех — можем убрать tombstone (опционально оставить чтобы откатить если запись прилетит)
+      // успех
       syncStatus = 'synced';
     }
   } catch(e) {
