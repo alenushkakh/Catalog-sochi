@@ -582,6 +582,12 @@ function budgetText(c) {
 
 /* ============================== RENDER ============================== */
 function render() {
+  // запоминаем фокус и позицию курсора чтобы не терять при перерисовке (поиск, фильтры)
+  const ae = document.activeElement;
+  const focusInfo = (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA'))
+    ? { id: ae.id, name: ae.name, type: ae.type, start: ae.selectionStart, end: ae.selectionEnd }
+    : null;
+
   document.documentElement.setAttribute('data-theme', state.theme);
   document.querySelector('meta[name="theme-color"]').setAttribute('content', state.theme==='dark' ? '#0E0E10' : '#F5F5F7');
   renderTopbar();
@@ -589,6 +595,15 @@ function render() {
   renderNav();
   renderSidebar();
   document.getElementById('fab').style.display = ['crm','clients','properties','tasks','finance'].includes(route) ? 'flex' : 'none';
+
+  // восстанавливаем фокус и курсор
+  if (focusInfo && focusInfo.id) {
+    const el = document.getElementById(focusInfo.id);
+    if (el) {
+      el.focus();
+      try { if (focusInfo.start != null) el.setSelectionRange(focusInfo.start, focusInfo.end); } catch(e) {}
+    }
+  }
 }
 
 function renderSidebar() {
@@ -828,7 +843,7 @@ function viewProperties() {
       <button class="tab ${propTab==='flat'?'active':''}" onclick="setPropTab('flat')">Квартиры</button>
       <button class="tab ${propTab==='house'?'active':''}" onclick="setPropTab('house')">Дома</button>
     </div>
-    <input class="search" placeholder="Поиск ЖК, района, застройщика…" value="${propSearch}" oninput="propSearch=this.value; render()" />
+    <input id="pr-search" class="search" placeholder="Поиск ЖК, района, застройщика…" value="${propSearch}" oninput="propSearch=this.value; render()" autocomplete="off" />
     <div style="display:flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
       <button class="tab ${propFiltersOpen||activeFilterCount?'active':''}" onclick="propFiltersOpen=!propFiltersOpen; render()">
         Фильтры${activeFilterCount?` · ${activeFilterCount}`:''}
@@ -955,7 +970,7 @@ function viewClients() {
   const activeFilters = (f.status?1:0) + (f.budgetMin?1:0) + (f.budgetMax?1:0) + (f.nextRange?1:0);
 
   return `
-    <input class="search" placeholder="Поиск клиента, телефона, запроса…" value="${clientSearch}" oninput="clientSearch=this.value; render()" />
+    <input id="cl-search" class="search" placeholder="Поиск клиента, телефона, запроса…" value="${clientSearch}" oninput="clientSearch=this.value; render()" autocomplete="off" />
     <div style="display:flex; gap:6px; margin-bottom: 10px; flex-wrap: wrap;">
       <button class="tab ${clientFiltersOpen||activeFilters?'active':''}" onclick="clientFiltersOpen=!clientFiltersOpen; render()">Фильтры${activeFilters?` · ${activeFilters}`:''}</button>
     </div>
@@ -1429,6 +1444,9 @@ function viewProfile() {
       </div>
       <div class="profile-row" onclick="importPropsXls()">
         <span class="label">Импорт объектов</span><span class="val">.csv/.xls</span>
+      </div>
+      <div class="profile-row" onclick="dedupeData()">
+        <span class="label">Найти и убрать дубликаты</span><span class="val">⊜</span>
       </div>
       <div class="profile-row" onclick="exportData()">
         <span class="label">Бэкап (компактный, без фото)</span><span class="val">JSON</span>
@@ -2172,6 +2190,48 @@ function saveProfile() {
   state.user.city = document.getElementById('up-city').value;
   state.user.role = document.getElementById('up-role').value;
   saveState(state); closeModal(); render();
+}
+
+async function dedupeData() {
+  // Находим дубли по содержимому (имя+телефон у клиентов, ЖК+цена у объектов и т.п.)
+  function dedupeBy(list, keyFn) {
+    const seen = new Map(); // key -> { keep, dropIds: [] }
+    list.forEach(item => {
+      const k = keyFn(item);
+      if (!k) return;
+      const ts = item.updatedAt || item.created_at || 0;
+      const prev = seen.get(k);
+      if (!prev) seen.set(k, { keep: item, dropIds: [] });
+      else {
+        const prevTs = prev.keep.updatedAt || prev.keep.created_at || 0;
+        if (ts > prevTs) {
+          prev.dropIds.push(prev.keep.id);
+          prev.keep = item;
+        } else {
+          prev.dropIds.push(item.id);
+        }
+      }
+    });
+    const dropIds = new Set();
+    seen.forEach(v => v.dropIds.forEach(id => dropIds.add(id)));
+    return { kept: list.filter(x => !dropIds.has(x.id)), dropped: [...dropIds] };
+  }
+  const cli = dedupeBy(state.clients, c => `${(c.name||'').toLowerCase().trim()}|${(c.phone||'').replace(/\D/g,'')}`);
+  const props = dedupeBy(state.properties, p => `${(p.complex||'').toLowerCase().trim()}|${(p.title||'').toLowerCase().trim()}|${p.price||''}`);
+  const dl = dedupeBy(state.deals, d => `${(d.object||'').toLowerCase().trim()}|${(d.client||'').toLowerCase().trim()}|${d.date||''}`);
+  const total = cli.dropped.length + props.dropped.length + dl.dropped.length;
+  if (total === 0) { alert('Дубликатов не найдено'); return; }
+  if (!confirm(`Найдено дубликатов:\n• Клиенты: ${cli.dropped.length}\n• Объекты: ${props.dropped.length}\n• Сделки: ${dl.dropped.length}\n\nУдалить?`)) return;
+  // помечаем tombstone'ом и физически удаляем
+  cli.dropped.forEach(id => syncDelete('client', id));
+  props.dropped.forEach(id => syncDelete('property', id));
+  dl.dropped.forEach(id => syncDelete('deal', id));
+  state.clients = cli.kept;
+  state.properties = props.kept;
+  state.deals = dl.kept;
+  saveState(state);
+  render();
+  alert(`Удалено ${total} дублей`);
 }
 
 function exportData() {
@@ -3070,6 +3130,7 @@ async function cloudSignOut() {
   await supa.auth.signOut();
   // ВАЖНО: очищаем локальный state чтобы данные предыдущего пользователя не «прилипли» к следующему
   clearLocalUserState();
+  clearTombstones();
   state.user.cloudConnected = false;
   state.user.avatar = null;
   state.user.email = '';
@@ -3113,12 +3174,24 @@ async function syncPullAll() {
       supa.from('tg_broadcasts').select('*'),
     ]);
     // MERGE стратегия: серверные данные имеют приоритет, локальные «лишние» пушим в облако
+    // ВАЖНО: отфильтровываем «надгробия» — записи которые пользователь удалил, но delete не дошёл
     function mergeLists(localList, serverList, mapper, pushType) {
-      const serverIds = new Set(serverList.map(r => r.id));
-      const localOnly = (localList||[]).filter(c => !serverIds.has(c.id));
+      // отфильтровываем серверные записи которые помечены как удалённые локально
+      const filteredServer = (serverList||[]).filter(r => !isTombstoned(pushType, r.id));
+      // повторяем серверное удаление для tombstoned записей которые всё ещё на сервере
+      (serverList||[]).filter(r => isTombstoned(pushType, r.id)).forEach(r => {
+        syncDelete(pushType, r.id);
+      });
+      const serverIds = new Set(filteredServer.map(r => r.id));
+      const localOnly = (localList||[])
+        .filter(c => !serverIds.has(c.id))
+        .filter(c => !isTombstoned(pushType, c.id)); // на случай если эта запись была удалена локально
       // отправляем локальные «лишние» в облако
       localOnly.forEach(obj => queuePush(pushType, obj));
-      return [...serverList.map(mapper), ...localOnly];
+      const merged = [...filteredServer.map(mapper), ...localOnly];
+      // дедуп по id на всякий случай
+      const seen = new Set();
+      return merged.filter(r => r.id && !seen.has(r.id) && seen.add(r.id));
     }
     if (cl.data) state.clients = mergeLists(state.clients, cl.data, clientFromDB, 'client');
     if (pr.data) {
@@ -3203,15 +3276,55 @@ function showSyncError() {
   if (!syncLastError) { alert('Последняя синхронизация прошла без ошибок'); return; }
   alert('Ошибка синхронизации:\n\n' + syncLastError + '\n\nЧасто помогает:\n1. Запустить supabase-fix-rls.sql в SQL Editor\n2. Проверить вход в облако\n3. Нажать «Обновить» в Профиле');
 }
+// «Надгробия» удалённых записей — чтобы синхронизация не возвращала их с сервера, если delete не дошёл по RLS
+// Структура: { client: { id1: timestamp, id2: timestamp }, property: {...}, ... }
+let tombstones = JSON.parse(localStorage.getItem('tombstones') || '{}');
+function saveTombstones() { localStorage.setItem('tombstones', JSON.stringify(tombstones)); }
+function addTombstone(type, recordId) {
+  if (!tombstones[type]) tombstones[type] = {};
+  tombstones[type][recordId] = Date.now();
+  saveTombstones();
+}
+function isTombstoned(type, recordId) {
+  return !!(tombstones[type] && tombstones[type][recordId]);
+}
+function clearTombstoneIfStale(type, recordId) {
+  // удалили локальное надгробие если успешно удалили с сервера (защита от вечного бана id)
+  if (tombstones[type]) {
+    delete tombstones[type][recordId];
+    saveTombstones();
+  }
+}
+
 async function syncDelete(type, recordId) {
+  // СНАЧАЛА ставим tombstone — чтобы при любом исходе мы не подтянули запись обратно из БД
+  addTombstone(type, recordId);
   if (!supa || !currentAgentRow) return;
   const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', tgchat: 'tg_chats', broadcast: 'tg_broadcasts' };
   if (!tables[type]) return;
   syncStatus = 'syncing'; renderTopbar();
-  const { error } = await supa.from(tables[type]).delete().eq('id', recordId);
-  syncStatus = error ? 'error' : 'synced';
+  try {
+    const { error, data } = await supa.from(tables[type]).delete().eq('id', recordId).select();
+    if (error) {
+      console.warn('syncDelete error', type, recordId, error);
+      syncStatus = 'error';
+      // оставляем tombstone — повторим удаление при следующем pushDeletionRetries
+    } else if (!data || data.length === 0) {
+      // RLS-фильтр пропустил delete без ошибки, но 0 строк удалено — нет прав
+      console.warn('syncDelete blocked by RLS', type, recordId);
+      syncStatus = 'synced'; // запись отфильтрована, скрываем локально через tombstone
+    } else {
+      // успех — можем убрать tombstone (опционально оставить чтобы откатить если запись прилетит)
+      syncStatus = 'synced';
+    }
+  } catch(e) {
+    console.warn('syncDelete exception', e); syncStatus = 'error';
+  }
   renderTopbar();
 }
+
+// При логауте чистим надгробия чтобы они не блокировали данные нового пользователя
+function clearTombstones() { tombstones = {}; saveTombstones(); }
 
 /* ============================== SUPABASE: UI ============================== */
 function openCloudLogin() {
