@@ -1,6 +1,6 @@
 // Service Worker — offline + кеш статики для скорости
 // Меняй CACHE_VERSION чтобы выкатить новую версию
-const CACHE_VERSION = 'crm-agenta-v20260619-1';
+const CACHE_VERSION = 'crm-agenta-v20260619-3';
 
 const STATIC = [
   './',
@@ -8,6 +8,7 @@ const STATIC = [
   './manifest.json',
   './icon.png',
   './privacy.html',
+  './404.html',
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];

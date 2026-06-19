@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>CRM Агента</title>
+<script>
+// GitHub Pages 404 fallback — переводит /КОД на /?ref=КОД для коротких рефералок
+// + редирект всего что не / на главную, чтобы SPA-приложение само разобралось
+(function() {
+  var path = window.location.pathname;
+  var search = window.location.search;
+  var hash = window.location.hash;
+  // вычисляем base: если репо называется Catalog-sochi, путь начинается с /Catalog-sochi
+  // но при кастомном домене app.каталог-сочи.рф base = /
+  var base = '/';
+  var parts = path.replace(/^\/+/, '').split('/').filter(Boolean);
+  // если репо-style, оставляем первый сегмент как base
+  if (parts.length > 1 && parts[0] === 'Catalog-sochi') {
+    base = '/Catalog-sochi/';
+    parts.shift();
+  }
+  // последний сегмент — потенциальный реф-код или роут
+  var last = parts.join('/');
+  var ref = '';
+  if (/^[A-Za-z0-9]{4,12}$/.test(last)) {
+    ref = last.toUpperCase();
+  }
+  var target = base + (ref ? ('?ref=' + ref) : '') + hash;
+  // если уже есть ?ref, передаём как есть
+  if (!ref && search) target = base + search + hash;
+  window.location.replace(target);
+})();
+</script>
+</head>
+<body>
+<p style="font-family: -apple-system, sans-serif; padding: 40px; text-align: center;">Открываем приложение...</p>
+</body>
+</html>

@@ -361,14 +361,25 @@ let syncLastError = '';
 let pushQueue = new Map();
 let pushTimer = null;
 
-/* Captures ?ref=CODE from URL and saves it for use after registration */
+/* Captures ?ref=CODE OR /КОД (short link) from URL and saves for post-registration */
 function capturePendingRef() {
   try {
     const url = new URL(location.href);
-    const code = (url.searchParams.get('ref') || '').trim().toUpperCase();
+    // вариант 1: ?ref=CODE (старый формат, поддерживаем)
+    let code = (url.searchParams.get('ref') || '').trim().toUpperCase();
+    // вариант 2: /КОД короткая ссылка (404.html редиректит на /?ref=КОД, или мы парсим path напрямую)
+    if (!code) {
+      // pathname примерно "/CA1234" или "/Catalog-sochi/CA1234" на GitHub Pages
+      const parts = url.pathname.split('/').filter(Boolean);
+      // последний сегмент, если выглядит как реф-код (6-12 буквоцифр)
+      const last = parts[parts.length - 1] || '';
+      if (/^[A-Z0-9]{4,12}$/.test(last.toUpperCase()) && !last.endsWith('.html')) {
+        code = last.toUpperCase();
+      }
+    }
     if (code) {
       localStorage.setItem('pendingRefCode', code);
-      // подчищаем URL, чтобы не светить
+      // подчищаем URL (убираем ref=, а path не трогаем чтобы кеш SW не сломать)
       url.searchParams.delete('ref');
       history.replaceState(null, '', url.toString());
     }
@@ -607,10 +618,12 @@ function render() {
 }
 
 function renderSidebar() {
+  const locked = shouldLockUI();
+  const subline = locked ? 'CRM для агентов' : `${state.user.role} · ${state.user.name}`;
   document.getElementById('sidebar').innerHTML = `
     <div class="brand">
       <img class="logo" src="icon.png?v=20260616" alt="" style="background: transparent; border-radius: 7px;">
-      <div>Каталог Сочи<br><span class="brand-sub">${state.user.role} · ${state.user.name}</span></div>
+      <div>CRM Агента<br><span class="brand-sub">${subline}</span></div>
     </div>
     <button class="nav-item ${route==='home'?'active':''}" onclick="go('home')"><span class="ico">⌂</span><span>Главная</span></button>
     <button class="nav-item ${route==='properties'?'active':''}" onclick="go('properties')"><span class="ico">▦</span><span>Объекты</span></button>
@@ -624,7 +637,15 @@ function renderSidebar() {
 }
 
 function renderTopbar() {
-  const titles = {
+  const locked = shouldLockUI();
+  const titles = locked ? {
+    home: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
+    properties: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
+    clients: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
+    crm: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
+    finance: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
+    profile: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
+  } : {
     home: { t: 'Главная', s: state.user.name + ' · ' + state.user.role },
     properties: { t: 'Объекты', s: state.properties.length + ' в каталоге' },
     clients: { t: 'Клиенты', s: state.clients.length + ' всего' },
@@ -1354,13 +1375,13 @@ function viewProfile() {
     <div class="card" style="background: linear-gradient(135deg, rgba(29,158,117,.18), rgba(29,158,117,.04)); border: 1px solid rgba(29,158,117,.3);">
       <div class="card-row">
         <div>
-          <h3 style="color: var(--success);">🎉 Early access</h3>
-          <p class="meta">Сейчас приложение бесплатно для всех пользователей</p>
+          <h3 style="color: var(--success);">Бесплатный доступ</h3>
+          <p class="meta">Период первых пользователей — без ограничений</p>
         </div>
-        <span class="pill s-new" style="background: var(--success); color: white;">Бесплатно</span>
+        <span class="pill s-new" style="background: var(--success); color: white;">Активна</span>
       </div>
       <p class="meta" style="margin-top: 10px; font-size: 12px;">
-        Спасибо что тестируешь продукт на ранней стадии. Когда мы дорастём, твоя реферальная программа сохранится — приглашённые останутся «за тобой».
+        Приглашённые по вашей ссылке коллеги остаются «за вами» и принесут +1 месяц подписки каждый, когда мы введём оплату.
       </p>
     </div>
 
@@ -1448,60 +1469,69 @@ function viewProfile() {
       <div class="profile-row" onclick="editProfile()">
         <span class="label">Имя и контакты</span><span class="val">${state.user.name}</span>
       </div>
-      ${state.user.role === 'Агент' ? '' : `
-      <div class="profile-row">
-        <div>
-          <div class="label">Только мои клиенты</div>
-          <div class="val" style="font-size: 11px;">${state.user.onlyMine ? 'Видны клиенты где Я — ответственный' : 'Видны все клиенты'}</div>
-        </div>
-        <div class="toggle">
-          <button class="${state.user.onlyMine?'on':''}" onclick="event.stopPropagation(); toggleOnlyMine(true)">Да</button>
-          <button class="${!state.user.onlyMine?'on':''}" onclick="event.stopPropagation(); toggleOnlyMine(false)">Нет</button>
-        </div>
-      </div>`}
       <div class="profile-row">
         <span class="label">Тема</span>
         <div class="toggle">
           <button class="${state.theme==='dark'?'on':''}" onclick="event.stopPropagation(); setTheme('dark')">Тёмная</button>
-          <button class="${state.theme==='light'?'on':''}" onclick="event.stopPropagation(); setTheme('light')">Светлая</button>
+          <button class="${!state.theme==='dark'?'on':''}" onclick="event.stopPropagation(); setTheme('light')">Светлая</button>
         </div>
-      </div>
-      <div class="profile-row" onclick="exportClientsXls()">
-        <span class="label">Экспорт клиентов</span><span class="val">.xls</span>
-      </div>
-      <div class="profile-row" onclick="exportPropsXls()">
-        <span class="label">Экспорт объектов</span><span class="val">.xls</span>
-      </div>
-      <div class="profile-row" onclick="importClientsXls()">
-        <span class="label">Импорт клиентов</span><span class="val">.csv/.xls</span>
-      </div>
-      <div class="profile-row" onclick="importPropsXls()">
-        <span class="label">Импорт объектов</span><span class="val">.csv/.xls</span>
-      </div>
-      <div class="profile-row" onclick="dedupeData()">
-        <span class="label">Найти и убрать дубликаты</span><span class="val">⊜</span>
-      </div>
-      <div class="profile-row" onclick="exportData()">
-        <span class="label">Бэкап (компактный, без фото)</span><span class="val">JSON</span>
-      </div>
-      <div class="profile-row" onclick="exportDataFull()">
-        <span class="label">Бэкап ПОЛНЫЙ — с фото</span><span class="val">JSON</span>
-      </div>
-      <div class="profile-row" onclick="importData()">
-        <span class="label">Восстановить из бэкапа</span><span class="val">JSON</span>
-      </div>
-      <div class="profile-row" onclick="if(confirm('Удалить все данные приложения?')){localStorage.removeItem(LS_KEY); state=loadState(); render();}">
-        <span class="label" style="color:var(--danger);">Сбросить приложение</span><span class="val">⟲</span>
       </div>
       <a href="privacy.html" target="_blank" class="profile-row" style="text-decoration:none; color:inherit;">
         <span class="label">Политика конфиденциальности</span><span class="val">↗</span>
       </a>
+      <div class="profile-row" onclick="toggleAdvanced()" style="border-bottom: ${state.user.showAdvanced ? '0.5px solid var(--border)' : '0'};">
+        <span class="label">Дополнительно</span><span class="val">${state.user.showAdvanced ? '▴' : '▾'}</span>
+      </div>
+      ${state.user.showAdvanced ? `
+        ${state.user.role === 'Агент' ? '' : `
+        <div class="profile-row">
+          <div>
+            <div class="label">Только мои клиенты</div>
+            <div class="val" style="font-size: 11px;">${state.user.onlyMine ? 'Видны клиенты где Я — ответственный' : 'Видны все клиенты'}</div>
+          </div>
+          <div class="toggle">
+            <button class="${state.user.onlyMine?'on':''}" onclick="event.stopPropagation(); toggleOnlyMine(true)">Да</button>
+            <button class="${!state.user.onlyMine?'on':''}" onclick="event.stopPropagation(); toggleOnlyMine(false)">Нет</button>
+          </div>
+        </div>`}
+        <div class="profile-row" onclick="exportClientsXls()">
+          <span class="label">Экспорт клиентов</span><span class="val">.xls</span>
+        </div>
+        <div class="profile-row" onclick="exportPropsXls()">
+          <span class="label">Экспорт объектов</span><span class="val">.xls</span>
+        </div>
+        <div class="profile-row" onclick="importClientsXls()">
+          <span class="label">Импорт клиентов</span><span class="val">.csv/.xls</span>
+        </div>
+        <div class="profile-row" onclick="importPropsXls()">
+          <span class="label">Импорт объектов</span><span class="val">.csv/.xls</span>
+        </div>
+        <div class="profile-row" onclick="dedupeData()">
+          <span class="label">Найти и убрать дубликаты</span><span class="val">⊜</span>
+        </div>
+        <div class="profile-row" onclick="exportData()">
+          <span class="label">Бэкап (без фото)</span><span class="val">JSON</span>
+        </div>
+        <div class="profile-row" onclick="exportDataFull()">
+          <span class="label">Бэкап с фото</span><span class="val">JSON</span>
+        </div>
+        <div class="profile-row" onclick="importData()">
+          <span class="label">Восстановить из бэкапа</span><span class="val">JSON</span>
+        </div>
+      ` : ''}
+      <div class="profile-row" onclick="cloudSignOut()">
+        <span class="label" style="color:var(--accent);">Выйти из аккаунта</span><span class="val" style="color:var(--accent);">↗</span>
+      </div>
       <div class="profile-row" onclick="deleteMyAccount()" style="border-bottom: 0;">
         <span class="label" style="color:var(--danger);">Удалить аккаунт безвозвратно</span><span class="val" style="color:var(--danger);">×</span>
       </div>
     </div>
-    <p class="meta" style="text-align:center; margin: 20px 0; font-size: 11px;">app.каталог-сочи.рф · MVP v0.1</p>
+    <p class="meta" style="text-align:center; margin: 20px 0; font-size: 11px;">app.каталог-сочи.рф · v1.0</p>
   `;
+}
+function toggleAdvanced() {
+  state.user.showAdvanced = !state.user.showAdvanced;
+  saveState(state); render();
 }
 
 async function deleteMyAccount() {
@@ -1663,18 +1693,29 @@ function delClient(cid) {
   saveState(state); syncDelete('client', cid); closeModal(); render();
 }
 
+// Хелпер: текущий пользователь — владелец объекта?
+function isPropOwner(p) {
+  if (!p) return false;
+  if (state.user.role === 'Директор') return true;
+  const myId = currentAgentRow?.id;
+  return p.agentId === myId || p.agent === state.user.name;
+}
 function openProperty(pid) {
   const p = state.properties.find(x => x.id === pid);
   if (!p) return;
+  const owns = isPropOwner(p);
   const photos = Array.isArray(p.photos) ? p.photos : [];
   const photosGrid = photos.length ?
     photos.map((src, i) => `
       <div style="position:relative; aspect-ratio: 4/3; background: var(--surface-2) center/cover url('${src}'); border-radius: 10px;">
-        <button class="photo-del" onclick="delPropPhoto('${p.id}', ${i})">×</button>
+        ${owns ? `<button class="photo-del" onclick="delPropPhoto('${p.id}', ${i})">×</button>` : ''}
       </div>`).join('') : '';
-  const canAddPhoto = photos.length < 5;
+  const canAddPhoto = owns && photos.length < 5;
+  const ro = owns ? '' : 'readonly disabled';
+  const disSel = owns ? '' : 'disabled';
   openModal(`
     <h2>${p.complex || p.title}</h2>
+    ${!owns ? `<div class="card" style="background: var(--surface-2); padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: var(--text-muted);">👁 Только просмотр — объект добавил ${p.agent || 'другой агент'}</div>` : ''}
     <div style="display:grid; grid-template-columns: repeat(${Math.min(5, Math.max(2, photos.length+1))}, 1fr); gap: 6px; margin-bottom: 14px;">
       ${photosGrid}
       ${canAddPhoto ? `
@@ -1688,61 +1729,65 @@ function openProperty(pid) {
       <button class="btn" onclick="shareProperty('${p.id}')">Поделиться</button>
       <button class="btn ghost" onclick="downloadPropertyPdf('${p.id}')">PDF</button>
     </div>
-    <div class="btn-row" style="margin-bottom: 14px;">
-      <button class="btn ghost" onclick="scheduleBroadcast('${p.id}')">📣 Запланировать TG</button>
-      <button class="btn ghost" onclick="copyAsTgPost('${p.id}')">📋 Скопировать пост</button>
-    </div>
-    <div class="field"><label>ЖК / Комплекс (обязательно)</label><input value="${p.complex||''}" onchange="updProp('${p.id}','complex',this.value)" placeholder="ЖК Морская симфония"></div>
-    <div class="field"><label>Название/№ объекта</label><input value="${p.title||''}" onchange="updProp('${p.id}','title',this.value)" placeholder="кв.142"></div>
+    ${owns ? `
+      <div class="btn-row" style="margin-bottom: 14px;">
+        <button class="btn ghost" onclick="scheduleBroadcast('${p.id}')">📣 Запланировать TG</button>
+        <button class="btn ghost" onclick="copyAsTgPost('${p.id}')">📋 Скопировать пост</button>
+      </div>
+    ` : ''}
+    <div class="field"><label>ЖК / Комплекс (обязательно)</label><input value="${p.complex||''}" ${ro} onchange="updProp('${p.id}','complex',this.value)" placeholder="ЖК Морская симфония"></div>
+    <div class="field"><label>Название/№ объекта</label><input value="${p.title||''}" ${ro} onchange="updProp('${p.id}','title',this.value)" placeholder="кв.142"></div>
     <div class="field"><label>Тип</label>
-      <select onchange="updProp('${p.id}','kind',this.value)">
+      <select ${disSel} onchange="updProp('${p.id}','kind',this.value)">
         <option value="new" ${p.kind==='new'?'selected':''}>Новостройка</option>
         <option value="flat" ${p.kind==='flat'?'selected':''}>Квартира</option>
         <option value="house" ${p.kind==='house'?'selected':''}>Дом / коттедж</option>
       </select>
     </div>
     <div class="field"><label>Спален</label>
-      <select onchange="updProp('${p.id}','bedrooms', this.value===''?null:+this.value)">
+      <select ${disSel} onchange="updProp('${p.id}','bedrooms', this.value===''?null:+this.value)">
         <option value="" ${p.bedrooms==null?'selected':''}>— не задано —</option>
         ${[0,1,2,3,4,5].map(n => `<option value="${n}" ${p.bedrooms===n?'selected':''}>${bedroomsLabel(n)}</option>`).join('')}
       </select>
     </div>
     <div class="field"><label>Ремонт</label>
-      <select onchange="updProp('${p.id}','reno',this.value)">
+      <select ${disSel} onchange="updProp('${p.id}','reno',this.value)">
         <option value="" ${!p.reno?'selected':''}>Без ремонта</option>
         <option value="cosmetic" ${p.reno==='cosmetic'?'selected':''}>Косметический</option>
         <option value="euro" ${p.reno==='euro'?'selected':''}>Евроремонт</option>
         <option value="design" ${p.reno==='design'?'selected':''}>Дизайнерский</option>
       </select>
     </div>
-    <div class="field"><label>Площадь</label><input value="${p.area||''}" onchange="updProp('${p.id}','area',this.value)"></div>
-    <div class="field"><label>Цена (₽)</label><input value="${p.price||0}" type="number" onchange="updProp('${p.id}','price',+this.value)"></div>
-    <div class="field"><label>Комиссия (₽ или %)</label><input value="${p.commission||''}" onchange="updProp('${p.id}','commission',this.value)" placeholder="напр. 3% или 372 000"></div>
-    <div class="field"><label>Район</label><input value="${p.district||''}" onchange="updProp('${p.id}','district',this.value)"></div>
-    <div class="field"><label>Застройщик</label><input value="${p.developer||''}" onchange="updProp('${p.id}','developer',this.value)"></div>
+    <div class="field"><label>Площадь</label><input value="${p.area||''}" ${ro} onchange="updProp('${p.id}','area',this.value)"></div>
+    <div class="field"><label>Цена (₽, обязательно)</label><input value="${p.price||0}" type="number" ${ro} onchange="updProp('${p.id}','price',+this.value)"></div>
+    <div class="field"><label>Комиссия (₽ или %)</label><input value="${p.commission||''}" ${ro} onchange="updProp('${p.id}','commission',this.value)" placeholder="напр. 3% или 372 000"></div>
+    <div class="field"><label>Район (обязательно)</label><input value="${p.district||''}" ${ro} onchange="updProp('${p.id}','district',this.value)"></div>
+    <div class="field"><label>Застройщик</label><input value="${p.developer||''}" ${ro} onchange="updProp('${p.id}','developer',this.value)"></div>
     <div class="field"><label>Агент (кто добавил)</label>
-      <input list="agents-list-prop" value="${p.agent||''}" onchange="updProp('${p.id}','agent',this.value); ensureAgent(this.value)" placeholder="Имя агента">
+      <input list="agents-list-prop" value="${p.agent||''}" ${ro} onchange="updProp('${p.id}','agent',this.value); ensureAgent(this.value)" placeholder="Имя агента">
       <datalist id="agents-list-prop">${(state.agents||[]).map(a=>`<option value="${a}">`).join('')}</datalist>
     </div>
-    <div class="field"><label>Телефон агента</label><input type="tel" value="${p.agentPhone||state.agentPhones?.[p.agent]||''}" onchange="updProp('${p.id}','agentPhone',this.value)" placeholder="+7"></div>
-    ${(state.user.role === 'Директор' || p.agent === state.user.name) ? `
+    <div class="field"><label>Телефон агента</label><input type="tel" value="${p.agentPhone||state.agentPhones?.[p.agent]||''}" ${ro} onchange="updProp('${p.id}','agentPhone',this.value)" placeholder="+7"></div>
+    ${owns ? `
       <div class="card" style="background: rgba(127,119,221,.1); padding: 12px; margin-bottom: 12px;">
         <p class="meta" style="margin: 0 0 8px; color: #7F77DD; font-size: 11px;">🔒 Контакт собственника · виден только вам</p>
         <div class="field" style="margin-bottom: 8px;"><label>Имя собственника</label><input value="${p.ownerName||''}" onchange="updProp('${p.id}','ownerName',this.value)" placeholder="ФИО"></div>
         <div class="field" style="margin-bottom: 0;"><label>Телефон собственника</label><input type="tel" value="${p.ownerPhone||''}" onchange="updProp('${p.id}','ownerPhone',this.value)" placeholder="+7"></div>
       </div>` : ''}
-    <div class="field"><label>Описание</label><textarea onchange="updProp('${p.id}','note',this.value)">${p.note||''}</textarea></div>
-    <div class="field"><label>Ближайшее событие (в календарь)</label>
-      <input type="datetime-local" value="${p.nextEvent?p.nextEvent.slice(0,16):''}" onchange="updProp('${p.id}','nextEvent', this.value?new Date(this.value).toISOString():null)">
-    </div>
-    <div class="field"><label>Что за событие</label>
-      <select onchange="updProp('${p.id}','nextEventTitle',this.value)">
-        <option value="">— выберите —</option>
-        ${['Показ объекта','Встреча с собственником','Подписание','Осмотр','Фотосессия','Бронирование'].map(a=>`<option ${p.nextEventTitle===a?'selected':''}>${a}</option>`).join('')}
-      </select>
-    </div>
+    <div class="field"><label>Описание</label><textarea ${ro} onchange="updProp('${p.id}','note',this.value)">${p.note||''}</textarea></div>
+    ${owns ? `
+      <div class="field"><label>Ближайшее событие (в календарь)</label>
+        <input type="datetime-local" value="${p.nextEvent?p.nextEvent.slice(0,16):''}" onchange="updProp('${p.id}','nextEvent', this.value?new Date(this.value).toISOString():null)">
+      </div>
+      <div class="field"><label>Что за событие</label>
+        <select onchange="updProp('${p.id}','nextEventTitle',this.value)">
+          <option value="">— выберите —</option>
+          ${['Показ объекта','Встреча с собственником','Подписание','Осмотр','Фотосессия','Бронирование'].map(a=>`<option ${p.nextEventTitle===a?'selected':''}>${a}</option>`).join('')}
+        </select>
+      </div>
+    ` : ''}
     <button class="btn" onclick="closeModal()">Готово</button>
-    <button class="btn danger" style="margin-top:8px;" onclick="delProp('${p.id}')">Удалить объект</button>
+    ${owns ? `<button class="btn danger" style="margin-top:8px;" onclick="delProp('${p.id}')">Удалить объект</button>` : ''}
   `);
 }
 
@@ -1983,10 +2028,23 @@ function saveNewClient() {
   state.clients.unshift(newClient);
   saveState(state); queuePush('client', newClient); closeModal(); render();
 }
+// буфер фото при создании нового объекта (data:URL → сжатые, потом загрузятся в Storage)
+let newPropPhotos = [];
 function addProperty() {
+  newPropPhotos = [];
   const complexes = [...new Set(state.properties.map(p => p.complex).filter(Boolean))];
   openModal(`
     <h2>Новый объект</h2>
+    <div class="card" style="background: linear-gradient(135deg, rgba(201,163,106,.08), rgba(201,163,106,.02)); padding: 14px; margin-bottom: 14px; border: 1px solid rgba(201,163,106,.25);">
+      <p class="meta" style="margin: 0 0 8px; color: var(--accent); font-size: 12px;">📸 Шаг 1: Фото (минимум 1, до 10)</p>
+      <p class="meta" style="margin: 0 0 10px; font-size: 11px;">Без фото публикация и продажи не работают</p>
+      <div id="np-photos-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 6px;"></div>
+      <label class="btn" style="margin-top: 10px; display: block; text-align: center; cursor: pointer;">
+        + Загрузить фото
+        <input type="file" accept="image/*" multiple style="display:none" onchange="addPhotosToNewProp(this)">
+      </label>
+    </div>
+    <p class="meta" style="margin: 14px 0 8px; font-size: 12px;">📝 Шаг 2: Данные объекта</p>
     <div class="field"><label>ЖК / Комплекс (обязательно)</label>
       <input id="np-complex" list="np-complex-list" placeholder="ЖК Морская симфония">
       <datalist id="np-complex-list">${complexes.map(c=>`<option value="${c}">`).join('')}</datalist>
@@ -2008,16 +2066,19 @@ function addProperty() {
       </select>
     </div>
     <div class="field"><label>Площадь</label><input id="np-area" placeholder="64 м²"></div>
-    <div class="field"><label>Цена (₽)</label><input id="np-price" type="number"></div>
+    <div class="field"><label>Цена ₽ (обязательно)</label><input id="np-price" type="number"></div>
     <div class="field"><label>Комиссия (₽ или %)</label><input id="np-commission" placeholder="3% или 372 000"></div>
-    <div class="field"><label>Район</label><input id="np-district"></div>
-    <button class="btn" onclick="saveNewProp()">Создать</button>
-    <p class="meta" style="text-align:center; margin-top: 12px;">Фото можно добавить после создания</p>
+    <div class="field"><label>Район (обязательно)</label><input id="np-district"></div>
+    <button class="btn" onclick="saveNewProp()">Создать объект</button>
   `);
 }
 function saveNewProp() {
   const complex = document.getElementById('np-complex').value.trim();
+  const district = document.getElementById('np-district').value.trim();
+  const price = +document.getElementById('np-price').value || 0;
   if (!complex) { alert('Укажите ЖК / комплекс'); return; }
+  if (!district) { alert('Укажите район'); return; }
+  if (!price) { alert('Укажите цену'); return; }
   const bedroomsRaw = document.getElementById('np-bedrooms').value;
   const newProp = {
     id: id(), complex, title: document.getElementById('np-title').value || '—',
@@ -2025,16 +2086,21 @@ function saveNewProp() {
     bedrooms: bedroomsRaw === '' ? null : +bedroomsRaw,
     reno: document.getElementById('np-reno').value,
     area: document.getElementById('np-area').value,
-    price: +document.getElementById('np-price').value || 0,
+    price,
     commission: document.getElementById('np-commission').value || '',
-    district: document.getElementById('np-district').value,
+    district,
     developer: '', note: '', photos: [],
     agent: state.user.name,
+    agentId: currentAgentRow?.id || null,
     agentPhone: state.user.phone || state.agentPhones?.[state.user.name] || '',
     createdAt: new Date().toISOString(),
   };
   state.properties.unshift(newProp);
-  saveState(state); queuePush('property', newProp); closeModal(); render();
+  saveState(state); queuePush('property', newProp);
+  toast('Объект создан. Не забудьте добавить фото — без них объект не будет показываться в публикациях', 'info', 5000);
+  closeModal(); render();
+  // сразу открываем для добавления фото
+  setTimeout(() => openProperty(newProp.id), 300);
 }
 function addTask() {
   const now = new Date(); now.setMinutes(0,0,0); now.setHours(now.getHours()+1);
@@ -2487,9 +2553,15 @@ function exportPropsXls() {
 }
 
 function getRefLink() {
-  // используем текущий домен (каталог-сочи.рф когда задеплоим, GitHub Pages пока)
-  const base = location.origin + location.pathname.replace(/\/[^\/]*$/, '/');
-  return base + '?ref=' + (state.user.refCode || 'CA0000');
+  // Короткая ссылка вида app.каталог-сочи.рф/КОД
+  // 404.html на GitHub Pages редиректит /КОД → /?ref=КОД
+  const code = state.user.refCode || 'CA0000';
+  // если открыты по app-домену — используем его, иначе fallback на текущий
+  const isAppDomain = /app\.каталог-сочи|app\.xn--/.test(location.host);
+  const base = isAppDomain
+    ? location.origin
+    : location.origin + location.pathname.replace(/\/[^\/]*$/, '');
+  return base + '/' + code;
 }
 function copyRef() {
   navigator.clipboard?.writeText(getRefLink()).then(()=>alert('Ссылка скопирована'));
@@ -2641,7 +2713,15 @@ function scheduleBroadcast(propId) {
   }
   const p = state.properties.find(x => x.id === propId);
   if (!p) return;
-  const now = new Date(); now.setMinutes(0,0,0); now.setHours(now.getHours()+1);
+  if (!p.photos || !p.photos.length) {
+    alert('Сначала добавьте хотя бы одно фото к объекту — без фото рассылка не имеет смысла');
+    return;
+  }
+  // по умолчанию: сейчас + 2 минуты (чтобы крон точно подхватил)
+  const now = new Date(Date.now() + 2 * 60 * 1000);
+  // компенсируем смещение часового пояса для datetime-local
+  const tzOffset = now.getTimezoneOffset() * 60000;
+  const nowLocal = new Date(now.getTime() - tzOffset).toISOString().slice(0,16);
   openModal(`
     <h2>Запланировать рассылку</h2>
     <p class="meta" style="margin-bottom: 14px;">Объект: <strong style="color:var(--text);">${p.complex} · ${p.title}</strong></p>
@@ -2658,7 +2738,7 @@ function scheduleBroadcast(propId) {
         `).join('')}
       </div>
     </div>
-    <div class="field"><label>Когда отправить</label><input id="bc-when" type="datetime-local" value="${now.toISOString().slice(0,16)}"></div>
+    <div class="field"><label>Когда отправить (по умолчанию через 2 минуты)</label><input id="bc-when" type="datetime-local" value="${nowLocal}"></div>
     <div class="field"><label>Доп. текст (опционально)</label><textarea id="bc-note" placeholder="Эксклюзив, торг возможен…"></textarea></div>
     <button class="btn" onclick="saveBroadcast('${propId}')">Запланировать</button>
   `);
@@ -2680,7 +2760,7 @@ function saveBroadcast(propId) {
       note,
       status: 'pending',
       sentAt: null,
-      createdBy: state.user.name,
+      createdBy: currentAgentRow?.id || null,
     };
     state.broadcasts.push(b);
     queuePush('broadcast', b);
@@ -2689,7 +2769,7 @@ function saveBroadcast(propId) {
   saveState(state);
   closeModal();
   render();
-  alert('Запланировано: ' + checked.length + ' рассылок.\nКрон Supabase каждую минуту проверяет очередь и шлёт когда время пришло.');
+  toast(`Запланировано: ${checked.length} рассылок. Бот отправит в течение 2 минут`, 'success', 4500);
 }
 async function sendBroadcastNow(bid) {
   if (!supa) { alert('Нужен вход в облако'); return; }
@@ -2709,7 +2789,11 @@ async function sendBroadcastNow(bid) {
   setTimeout(async () => { await syncPullAll(); render(); }, 70000);
 }
 function manageBroadcasts() {
-  const list = (state.broadcasts || []).slice().sort((a,b) => new Date(b.when) - new Date(a.when));
+  // показываем только свои рассылки. Директор видит все через is_admin RLS, но в UI ограничиваем для чистоты.
+  const myId = currentAgentRow?.id;
+  const list = (state.broadcasts || []).filter(b =>
+    !myId || !b.createdBy || b.createdBy === myId || (state.user.role === 'Директор')
+  ).slice().sort((a,b) => new Date(b.when) - new Date(a.when));
   openModal(`
     <h2>Расписание рассылок</h2>
     <p class="meta" style="margin-bottom: 14px;">Всего: ${list.length}. Pending — ждёт отправки, sent — отправлено.</p>
@@ -2961,7 +3045,7 @@ function propFromDB(r) {
     bedrooms: r.bedrooms, reno: r.reno || '', area: r.area || '',
     price: r.price || 0, commission: r.commission || '',
     district: r.district || '', developer: r.developer || '', note: r.note || '',
-    agent: r.agent_name || '', agentPhone: r.agent_phone || '',
+    agent: r.agent_name || '', agentId: r.agent_id, agentPhone: r.agent_phone || '',
     photos: Array.isArray(r.photos) ? r.photos : [],
     nextEvent: null, nextEventTitle: '',
     updatedAt: r.updated_at,
