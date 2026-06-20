@@ -1710,7 +1710,7 @@ function openProperty(pid) {
       <div style="position:relative; aspect-ratio: 4/3; background: var(--surface-2) center/cover url('${src}'); border-radius: 10px;">
         ${owns ? `<button class="photo-del" onclick="delPropPhoto('${p.id}', ${i})">×</button>` : ''}
       </div>`).join('') : '';
-  const canAddPhoto = owns && photos.length < 5;
+  const canAddPhoto = owns && photos.length < 10;
   const ro = owns ? '' : 'readonly disabled';
   const disSel = owns ? '' : 'disabled';
   openModal(`
@@ -1720,7 +1720,7 @@ function openProperty(pid) {
       ${photosGrid}
       ${canAddPhoto ? `
         <label class="photo-add">
-          <span>+ Фото<br><small>${photos.length}/5</small></span>
+          <span>+ Фото<br><small>${photos.length}/10</small></span>
           <input type="file" accept="image/*" multiple style="display:none" onchange="uploadPropPhotos('${p.id}', this)">
         </label>
       ` : ''}
@@ -1798,10 +1798,18 @@ async function uploadOnePhotoToStorage(blob, propId) {
     const { error } = await supa.storage.from('property-photos').upload(filename, blob, {
       contentType: 'image/jpeg', cacheControl: '3600', upsert: false,
     });
-    if (error) { console.warn('storage upload:', error); return null; }
+    if (error) {
+      console.warn('storage upload:', error);
+      if (typeof toast === 'function') toast('Ошибка загрузки фото: ' + (error.message || ''), 'error', 4000);
+      return null;
+    }
     const { data } = supa.storage.from('property-photos').getPublicUrl(filename);
     return data?.publicUrl || null;
-  } catch(e) { console.warn(e); return null; }
+  } catch(e) {
+    console.warn(e);
+    if (typeof toast === 'function') toast('Ошибка фото: ' + (e.message || ''), 'error', 4000);
+    return null;
+  }
 }
 
 function uploadPropPhotos(pid, input) {
@@ -1809,8 +1817,8 @@ function uploadPropPhotos(pid, input) {
   if (!p) return;
   if (!Array.isArray(p.photos)) p.photos = [];
   const files = Array.from(input.files || []);
-  const slotsLeft = 5 - p.photos.length;
-  if (slotsLeft <= 0) { alert('Максимум 5 фото'); return; }
+  const slotsLeft = 10 - p.photos.length;
+  if (slotsLeft <= 0) { alert('Максимум 10 фото'); return; }
   const filesToProcess = files.slice(0, slotsLeft);
   let processed = 0;
   filesToProcess.forEach(file => {
@@ -2072,16 +2080,82 @@ function addProperty() {
     <button class="btn" onclick="saveNewProp()">Создать объект</button>
   `);
 }
-function saveNewProp() {
+function renderNewPropPhotos() {
+  const grid = document.getElementById('np-photos-grid');
+  if (!grid) return;
+  grid.innerHTML = newPropPhotos.map((src, i) => `
+    <div style="position:relative; aspect-ratio: 1; background: var(--surface-2) center/cover url('${src}'); border-radius: 8px;">
+      <button class="photo-del" onclick="event.preventDefault(); removeNewPropPhoto(${i})">×</button>
+    </div>
+  `).join('');
+}
+function removeNewPropPhoto(idx) {
+  newPropPhotos.splice(idx, 1);
+  renderNewPropPhotos();
+}
+function addPhotosToNewProp(input) {
+  const files = Array.from(input.files || []);
+  const slotsLeft = 10 - newPropPhotos.length;
+  if (slotsLeft <= 0) { toast('Максимум 10 фото', 'error'); return; }
+  const filesToProcess = files.slice(0, slotsLeft);
+  filesToProcess.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        // сжатие до 1200px по большей стороне, jpeg 0.82 (~150-280КБ)
+        const max = 1200;
+        const ratio = Math.min(max / img.width, max / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        newPropPhotos.push(canvas.toDataURL('image/jpeg', 0.82));
+        renderNewPropPhotos();
+      };
+      img.onerror = () => toast('Не удалось прочесть фото', 'error');
+      img.src = e.target.result;
+    };
+    reader.onerror = () => toast('Не удалось загрузить файл', 'error');
+    reader.readAsDataURL(file);
+  });
+  input.value = ''; // позволяет загрузить тот же файл повторно
+}
+
+async function saveNewProp() {
   const complex = document.getElementById('np-complex').value.trim();
   const district = document.getElementById('np-district').value.trim();
   const price = +document.getElementById('np-price').value || 0;
+  if (newPropPhotos.length === 0) { alert('Добавьте хотя бы одно фото объекта'); return; }
   if (!complex) { alert('Укажите ЖК / комплекс'); return; }
   if (!district) { alert('Укажите район'); return; }
   if (!price) { alert('Укажите цену'); return; }
   const bedroomsRaw = document.getElementById('np-bedrooms').value;
+  const newPropId = id();
+  // загружаем все фото в Storage параллельно
+  const uploadedUrls = [];
+  if (supa && currentAgentRow) {
+    toast('Загружаем фото...', 'info', 2000);
+    const tasks = newPropPhotos.map(async (dataUrl) => {
+      try {
+        const blob = await (await fetch(dataUrl)).blob();
+        const url = await uploadOnePhotoToStorage(blob, newPropId);
+        return url || dataUrl; // fallback на data:URL если Storage недоступен
+      } catch(e) {
+        console.warn('photo upload failed:', e);
+        return dataUrl;
+      }
+    });
+    const results = await Promise.all(tasks);
+    results.forEach(u => uploadedUrls.push(u));
+  } else {
+    // оффлайн — сохраняем data:URL, при подключении к облаку фото уйдут в Storage
+    uploadedUrls.push(...newPropPhotos);
+  }
   const newProp = {
-    id: id(), complex, title: document.getElementById('np-title').value || '—',
+    id: newPropId, complex, title: document.getElementById('np-title').value || '—',
     kind: document.getElementById('np-kind').value,
     bedrooms: bedroomsRaw === '' ? null : +bedroomsRaw,
     reno: document.getElementById('np-reno').value,
@@ -2089,7 +2163,7 @@ function saveNewProp() {
     price,
     commission: document.getElementById('np-commission').value || '',
     district,
-    developer: '', note: '', photos: [],
+    developer: '', note: '', photos: uploadedUrls,
     agent: state.user.name,
     agentId: currentAgentRow?.id || null,
     agentPhone: state.user.phone || state.agentPhones?.[state.user.name] || '',
@@ -2097,10 +2171,9 @@ function saveNewProp() {
   };
   state.properties.unshift(newProp);
   saveState(state); queuePush('property', newProp);
-  toast('Объект создан. Не забудьте добавить фото — без них объект не будет показываться в публикациях', 'info', 5000);
+  newPropPhotos = [];
+  toast(`Объект создан с ${uploadedUrls.length} фото`, 'success', 3000);
   closeModal(); render();
-  // сразу открываем для добавления фото
-  setTimeout(() => openProperty(newProp.id), 300);
 }
 function addTask() {
   const now = new Date(); now.setMinutes(0,0,0); now.setHours(now.getHours()+1);
@@ -2516,7 +2589,10 @@ function downloadXls(filename, rows) {
   URL.revokeObjectURL(url);
 }
 function exportClientsXls() {
-  const list = visibleClients();
+  // экспорт только своих клиентов (где ты — ответственный агент)
+  const me = state.user.name;
+  const list = state.clients.filter(c => c.responsible === me || !c.responsible);
+  if (!list.length) { alert('У вас пока нет клиентов для экспорта'); return; }
   const rows = [['Имя','Телефон','Статус','Запрос','Тип','Бюджет млн','Район','Ответственный','След. контакт','Действие','Комментарий']];
   list.forEach(c => rows.push([
     c.name, c.phone, statusLabel(c.status), c.requestComment, c.type,
@@ -2524,16 +2600,15 @@ function exportClientsXls() {
     c.nextContact ? fmtDateTime(c.nextContact) : '',
     c.nextAction, c.note
   ]));
-  downloadXls('clients-sochi', rows);
+  downloadXls('my-clients', rows);
 }
 function exportPropsXls() {
   const u = state.user;
-  const isDirector = u.role === 'Директор' || u.role === 'Руководитель отдела';
-  // агенту — только его объекты, директору — все с колонкой агента
-  const list = isDirector ? state.properties : state.properties.filter(p => p.agent === u.name);
-  const headers = ['ЖК','Объект','Тип','Спален','Площадь','Цена','Комиссия','Район','Застройщик','Ремонт'];
-  if (isDirector) headers.push('Агент','Тел. агента');
-  headers.push('Описание');
+  const myId = currentAgentRow?.id;
+  // экспорт только своих объектов (где ты — добавивший)
+  const list = state.properties.filter(p => p.agent === u.name || p.agentId === myId);
+  if (!list.length) { alert('У вас пока нет объектов для экспорта'); return; }
+  const headers = ['ЖК','Объект','Тип','Спален','Площадь','Цена','Комиссия','Район','Застройщик','Ремонт','Описание'];
   const rows = [headers];
   list.forEach(p => {
     const row = [
@@ -2541,15 +2616,11 @@ function exportPropsXls() {
       p.bedrooms != null ? bedroomsLabel(p.bedrooms) : '',
       p.area, p.price, p.commission, p.district, p.developer,
       ({cosmetic:'Косметический',euro:'Евроремонт',design:'Дизайнерский'})[p.reno] || '',
+      p.note||''
     ];
-    if (isDirector) row.push(p.agent||'', p.agentPhone||state.agentPhones?.[p.agent]||'');
-    row.push(p.note||'');
     rows.push(row);
   });
-  downloadXls('properties-sochi', rows);
-  if (!isDirector && list.length === 0) {
-    setTimeout(()=>alert('У вас пока нет добавленных объектов. Файл выгружен пустым.'), 100);
-  }
+  downloadXls('my-properties', rows);
 }
 
 function getRefLink() {
