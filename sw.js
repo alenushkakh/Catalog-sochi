@@ -1,6 +1,6 @@
 // Service Worker — offline + кеш статики для скорости
 // Меняй CACHE_VERSION чтобы выкатить новую версию
-const CACHE_VERSION = 'crm-agenta-v20260619-3';
+const CACHE_VERSION = 'crm-agenta-v20260620-1';
 
 const STATIC = [
   './',
@@ -75,5 +75,21 @@ self.addEventListener('fetch', e => {
     } catch {
       return new Response('', { status: 504 });
     }
+  })());
+});
+
+// При клике на уведомление — открываем приложение (или фокусируем уже открытую вкладку)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    // если есть открытая вкладка с приложением — фокусируем её
+    for (const c of allClients) {
+      if (c.url.includes('caталог-сочи') || c.url.includes(self.location.host)) {
+        return c.focus();
+      }
+    }
+    // иначе открываем новую
+    return self.clients.openWindow('./');
   })());
 });
