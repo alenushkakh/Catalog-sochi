@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#14182A">
 <title>CRM Агента</title>
-<link rel="manifest" href="manifest.json?v=20260616">
-<link rel="icon" type="image/png" href="icon.png?v=20260616">
-<link rel="apple-touch-icon" href="icon.png?v=20260616">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 :root {
@@ -305,26 +305,8 @@ table.crm tr:hover td { background: var(--surface); }
   table.crm th, table.crm td { padding: 12px 10px; }
   .filter-panel { max-width: 760px; }
   .client-mini { font-size: 13px; padding: 8px 14px; min-height: 40px; }
-}
-/* всплывающее напоминание */
-.reminder-banner {
-  position: fixed; top: 20px; right: 20px; max-width: 340px;
-  background: var(--accent); color: var(--accent-text);
-  padding: 14px 36px 14px 16px; border-radius: 12px;
-  box-shadow: 0 6px 24px rgba(0,0,0,.35);
-  z-index: 1000; cursor: pointer;
-  animation: rb-in .35s ease-out;
-  font-size: 14px;
-}
-.reminder-banner strong { display:block; font-size: 12px; opacity: .85; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .3px; }
-.reminder-banner .rb-close { position:absolute; top: 6px; right: 8px; background: transparent; border: 0; color: inherit; font-size: 22px; line-height: 1; cursor: pointer; opacity: .7; }
-.reminder-banner .rb-close:hover { opacity: 1; }
-@keyframes rb-in { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-@media (max-width: 600px) {
-  .reminder-banner { left: 12px; right: 12px; top: max(env(safe-area-inset-top), 12px); max-width: none; }
-}
-@media (min-width: 900px) {
   .client-mini .cm-name { font-size: 14px; }
+
   .modal-bg { align-items: center; }
   .modal { border-radius: 18px; max-width: 560px; max-height: 88vh; }
 }
@@ -349,7 +331,7 @@ table.crm tr:hover td { background: var(--surface); }
 /* ============================== STATE ============================== */
 const LS_KEY = 'sochi-crm-v1';
 const PAYMENT_LINK = 'https://qr.nspk.ru/AD100065NS9L201R81IPM6JLBMAHKGC9';
-const SUBSCRIPTION_PRICE = 500;
+const SUBSCRIPTION_PRICE = 300;
 
 /* ============================== SUPABASE ============================== */
 const SUPABASE_URL = 'https://xdbdsyewjjhzqzuaijxi.supabase.co';
@@ -361,25 +343,14 @@ let syncLastError = '';
 let pushQueue = new Map();
 let pushTimer = null;
 
-/* Captures ?ref=CODE OR /КОД (short link) from URL and saves for post-registration */
+/* Captures ?ref=CODE from URL and saves it for use after registration */
 function capturePendingRef() {
   try {
     const url = new URL(location.href);
-    // вариант 1: ?ref=CODE (старый формат, поддерживаем)
-    let code = (url.searchParams.get('ref') || '').trim().toUpperCase();
-    // вариант 2: /КОД короткая ссылка (404.html редиректит на /?ref=КОД, или мы парсим path напрямую)
-    if (!code) {
-      // pathname примерно "/CA1234" или "/Catalog-sochi/CA1234" на GitHub Pages
-      const parts = url.pathname.split('/').filter(Boolean);
-      // последний сегмент, если выглядит как реф-код (6-12 буквоцифр)
-      const last = parts[parts.length - 1] || '';
-      if (/^[A-Z0-9]{4,12}$/.test(last.toUpperCase()) && !last.endsWith('.html')) {
-        code = last.toUpperCase();
-      }
-    }
+    const code = (url.searchParams.get('ref') || '').trim().toUpperCase();
     if (code) {
       localStorage.setItem('pendingRefCode', code);
-      // подчищаем URL (убираем ref=, а path не трогаем чтобы кеш SW не сломать)
+      // подчищаем URL, чтобы не светить
       url.searchParams.delete('ref');
       history.replaceState(null, '', url.toString());
     }
@@ -593,37 +564,20 @@ function budgetText(c) {
 
 /* ============================== RENDER ============================== */
 function render() {
-  // запоминаем фокус и позицию курсора чтобы не терять при перерисовке (поиск, фильтры)
-  const ae = document.activeElement;
-  const focusInfo = (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA'))
-    ? { id: ae.id, name: ae.name, type: ae.type, start: ae.selectionStart, end: ae.selectionEnd }
-    : null;
-
   document.documentElement.setAttribute('data-theme', state.theme);
   document.querySelector('meta[name="theme-color"]').setAttribute('content', state.theme==='dark' ? '#0E0E10' : '#F5F5F7');
   renderTopbar();
   renderContent();
   renderNav();
   renderSidebar();
-  document.getElementById('fab').style.display = (!shouldLockUI() && ['crm','clients','properties','tasks','finance'].includes(route)) ? 'flex' : 'none';
-
-  // восстанавливаем фокус и курсор
-  if (focusInfo && focusInfo.id) {
-    const el = document.getElementById(focusInfo.id);
-    if (el) {
-      el.focus();
-      try { if (focusInfo.start != null) el.setSelectionRange(focusInfo.start, focusInfo.end); } catch(e) {}
-    }
-  }
+  document.getElementById('fab').style.display = ['crm','clients','properties','tasks','finance'].includes(route) ? 'flex' : 'none';
 }
 
 function renderSidebar() {
-  const locked = shouldLockUI();
-  const subline = locked ? 'CRM для агентов' : `${state.user.role} · ${state.user.name}`;
   document.getElementById('sidebar').innerHTML = `
     <div class="brand">
-      <img class="logo" src="icon.png?v=20260616" alt="" style="background: transparent; border-radius: 7px;">
-      <div>CRM Агента<br><span class="brand-sub">${subline}</span></div>
+      <img class="logo" src="icon.svg" alt="" style="background: transparent; border-radius: 7px;">
+      <div>Каталог Сочи<br><span class="brand-sub">${state.user.role} · ${state.user.name}</span></div>
     </div>
     <button class="nav-item ${route==='home'?'active':''}" onclick="go('home')"><span class="ico">⌂</span><span>Главная</span></button>
     <button class="nav-item ${route==='properties'?'active':''}" onclick="go('properties')"><span class="ico">▦</span><span>Объекты</span></button>
@@ -637,15 +591,7 @@ function renderSidebar() {
 }
 
 function renderTopbar() {
-  const locked = shouldLockUI();
-  const titles = locked ? {
-    home: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
-    properties: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
-    clients: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
-    crm: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
-    finance: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
-    profile: { t: 'CRM Агента', s: 'Войдите в аккаунт' },
-  } : {
+  const titles = {
     home: { t: 'Главная', s: state.user.name + ' · ' + state.user.role },
     properties: { t: 'Объекты', s: state.properties.length + ' в каталоге' },
     clients: { t: 'Клиенты', s: state.clients.length + ' всего' },
@@ -681,7 +627,6 @@ function tabSub() {
 
 function renderContent() {
   const c = document.getElementById('content');
-  if (shouldLockUI()) { c.innerHTML = viewLocked(); c.scrollTop = 0; return; }
   if (route === 'home') c.innerHTML = viewHome();
   else if (route === 'properties') c.innerHTML = viewProperties();
   else if (route === 'clients') c.innerHTML = viewClients();
@@ -689,38 +634,6 @@ function renderContent() {
   else if (route === 'finance') c.innerHTML = viewFinance();
   else if (route === 'profile') c.innerHTML = viewProfile();
   c.scrollTop = 0;
-}
-
-function viewLocked() {
-  if (!authChecked) {
-    return `
-      <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height: 60vh; padding: 40px 20px; text-align:center;">
-        <div class="lock-spinner"></div>
-        <p class="meta" style="margin-top: 16px;">Проверяем сессию...</p>
-      </div>
-      <style>
-        .lock-spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--surface-2); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-      </style>`;
-  }
-  return `
-    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height: 70vh; padding: 40px 20px; text-align:center;">
-      <div style="width: 72px; height: 72px; border-radius: 18px; background: var(--surface); display:flex; align-items:center; justify-content:center; font-size: 32px; margin-bottom: 20px;">🔒</div>
-      <h2 style="margin: 0 0 10px; font-size: 22px; letter-spacing: -.3px;">Войдите в аккаунт</h2>
-      <p class="meta" style="max-width: 320px; margin: 0 0 24px;">Клиенты, объекты и сделки защищены — без подтверждения сессии они не показываются на устройстве.</p>
-      <button class="btn" style="max-width: 280px;" onclick="openCloudLogin()">Войти / Регистрация</button>
-      <p class="meta" style="margin-top: 24px; font-size: 11px; max-width: 320px;">
-        Локальный режим без облака — <a href="#" onclick="event.preventDefault(); useOfflineMode()" style="color: var(--accent);">включить</a>
-      </p>
-    </div>`;
-}
-
-function useOfflineMode() {
-  if (!confirm('Локальный режим: данные хранятся только на этом устройстве, не синхронизируются между устройствами и не защищены сессией. Продолжить?')) return;
-  state.user.cloudConnected = false;
-  saveState(state);
-  authChecked = true;
-  render();
 }
 
 function renderNav() {
@@ -796,13 +709,15 @@ function goCrm(tab) {
 
 function clientMiniRow(c) {
   const next = c.nextContact ? fmtDate(c.nextContact) + (c.nextAction?' · '+c.nextAction:'') : '';
-  const showResp = state.user.role !== 'Агент' && c.responsible;
+  const isTransferredAway = c.transferredAway || (c.previousAgentIds && c.previousAgentIds.includes(currentAgentRow?.id) && c.responsible !== state.user.name);
+  const showResp = (state.user.role !== 'Агент' || isTransferredAway) && c.responsible;
   const priorityBg = c.priority ? 'background: rgba(250,199,117,.22);' : '';
+  const fadedStyle = isTransferredAway ? 'opacity: .45;' : '';
   return `
-    <div class="client-mini" onclick="openClient('${c.id}')" style="border-left-color: ${statusStripe(c.status)}; ${priorityBg}">
+    <div class="client-mini" onclick="openClient('${c.id}')" style="border-left-color: ${statusStripe(c.status)}; ${priorityBg} ${fadedStyle}">
       <div class="cm-main">
-        <span class="cm-name">${c.priority?'⭐ ':''}${c.name}${showResp?` <span style="color:var(--text-muted); font-weight:400;">· ${c.responsible}</span>`:''}</span>
-        <span class="cm-meta">${[c.type, budgetText(c)].filter(Boolean).join(' · ')}</span>
+        <span class="cm-name">${c.priority?'⭐ ':''}${c.name}${showResp?` <span style="color:var(--text-muted); font-weight:400;">· ${c.responsible}${isTransferredAway?' ↗':''}</span>`:''}</span>
+        <span class="cm-meta">${[c.type, budgetText(c)].filter(Boolean).join(' · ')}${isTransferredAway?' · передан':''}</span>
       </div>
       <span class="cm-next">${next}</span>
       <span class="pill ${statusClass(c.status)}" style="font-size:10px; padding:2px 7px;">${statusLabel(c.status)}</span>
@@ -897,7 +812,7 @@ function viewProperties() {
       <button class="tab ${propTab==='flat'?'active':''}" onclick="setPropTab('flat')">Квартиры</button>
       <button class="tab ${propTab==='house'?'active':''}" onclick="setPropTab('house')">Дома</button>
     </div>
-    <input id="pr-search" class="search" placeholder="Поиск ЖК, района, застройщика…" value="${propSearch}" oninput="propSearch=this.value; render()" autocomplete="off" />
+    <input class="search" placeholder="Поиск ЖК, района, застройщика…" value="${propSearch}" oninput="propSearch=this.value; render()" />
     <div style="display:flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;">
       <button class="tab ${propFiltersOpen||activeFilterCount?'active':''}" onclick="propFiltersOpen=!propFiltersOpen; render()">
         Фильтры${activeFilterCount?` · ${activeFilterCount}`:''}
@@ -1024,7 +939,7 @@ function viewClients() {
   const activeFilters = (f.status?1:0) + (f.budgetMin?1:0) + (f.budgetMax?1:0) + (f.nextRange?1:0);
 
   return `
-    <input id="cl-search" class="search" placeholder="Поиск клиента, телефона, запроса…" value="${clientSearch}" oninput="clientSearch=this.value; render()" autocomplete="off" />
+    <input class="search" placeholder="Поиск клиента, телефона, запроса…" value="${clientSearch}" oninput="clientSearch=this.value; render()" />
     <div style="display:flex; gap:6px; margin-bottom: 10px; flex-wrap: wrap;">
       <button class="tab ${clientFiltersOpen||activeFilters?'active':''}" onclick="clientFiltersOpen=!clientFiltersOpen; render()">Фильтры${activeFilters?` · ${activeFilters}`:''}</button>
     </div>
@@ -1358,31 +1273,39 @@ function toggleTask(taskId) {
 
 function viewProfile() {
   const refTotal = state.referrals.reduce((s,r)=>s+r.amount, 0);
-  const av = state.user.avatar;
-  const avatarBlock = av
-    ? `<img src="${av}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;" alt="">`
-    : `<div class="avatar acc" style="width: 56px; height: 56px; font-size: 18px;">${initials(state.user.name)}</div>`;
   return `
-    <div class="card" style="display:flex; align-items:center; gap: 12px;" onclick="editProfile()">
-      ${avatarBlock}
-      <div>
+    <div class="card" style="display:flex; align-items:center; gap: 12px; cursor:pointer;" onclick="editProfile()">
+      ${state.user.avatar ?
+        `<div style="width: 56px; height: 56px; border-radius: 50%; background-image: url('${state.user.avatar}'); background-size: cover; background-position: center;"></div>` :
+        `<div class="avatar acc" style="width: 56px; height: 56px; font-size: 18px;">${initials(state.user.name)}</div>`
+      }
+      <div style="flex:1; min-width: 0;">
         <h3 style="font-size:17px;">${state.user.name}</h3>
-        <p class="meta">${state.user.role} · ${state.user.city}</p>
+        <p class="meta">${state.user.role}${state.user.city?' · '+state.user.city:''}${state.user.phone?' · '+state.user.phone:''}</p>
       </div>
+      <span style="color:var(--accent); font-size: 14px;">✎</span>
     </div>
 
     <div class="section-h">Подписка</div>
-    <div class="card" style="background: linear-gradient(135deg, rgba(29,158,117,.18), rgba(29,158,117,.04)); border: 1px solid rgba(29,158,117,.3);">
+    <div class="card">
       <div class="card-row">
         <div>
-          <h3 style="color: var(--success);">Бесплатный доступ</h3>
-          <p class="meta">Период первых пользователей — без ограничений</p>
+          <h3>Тариф «Агент»</h3>
+          <p class="meta">${SUBSCRIPTION_PRICE} ₽ / месяц · ${subStatusText()}</p>
         </div>
-        <span class="pill s-new" style="background: var(--success); color: white;">Активна</span>
+        <span class="pill ${subActive()?'s-new':'s-cold'}">${subActive()?'Активна':'Не активна'}</span>
       </div>
-      <p class="meta" style="margin-top: 10px; font-size: 12px;">
-        Приглашённые по вашей ссылке коллеги остаются «за вами» и принесут +1 месяц подписки каждый, когда мы введём оплату.
-      </p>
+      ${(() => {
+        const balance = state.referrals.reduce((s,r)=>s+(r.amount||0),0);
+        const canPayFromBalance = balance >= SUBSCRIPTION_PRICE;
+        return `
+          <button class="btn" style="margin-top:10px;" onclick="openPayment()">Оплатить ${SUBSCRIPTION_PRICE} ₽ через СБП</button>
+          <button class="btn ghost" style="margin-top:8px;" onclick="payFromBalance()" ${canPayFromBalance?'':'disabled style="opacity:.5;"'}>
+            Оплатить с баланса${canPayFromBalance ? '' : ` (нужно ${SUBSCRIPTION_PRICE-balance} ₽)`}
+          </button>
+          <p class="meta" style="margin-top: 6px; font-size: 11px;">Баланс рефералки: ${fmtMoney(balance)}</p>
+        `;
+      })()}
     </div>
 
     <div class="section-h">Финансы</div>
@@ -1390,15 +1313,9 @@ function viewProfile() {
       <button class="btn ghost" onclick="go('finance')">Сделки</button>
     </div>
 
-    <div class="section-h">Telegram-рассылка</div>
-    <div class="card" style="padding: 14px;">
-      <p class="meta" style="margin: 0 0 8px;">Бот: <strong style="color:var(--text);">@CRM_Agenta_bot</strong> · Каналы: <strong style="color:var(--text);">${state.tgChats.length}</strong> · В очереди: <strong style="color:var(--text);">${state.broadcasts.filter(b=>b.status==='pending').length}</strong></p>
-      <p class="meta" style="margin: 0 0 10px; font-size: 11px;">Сообщения отправляются от имени бота. В тексте поста подставляется имя и телефон агента, который запланировал рассылку.</p>
-      <div class="btn-row">
-        <button class="btn ghost" onclick="manageTgChats()">Каналы</button>
-        <button class="btn" onclick="manageBroadcasts()">Расписание</button>
-      </div>
-    </div>
+    <!-- Автоматическая Telegram-рассылка временно скрыта.
+         Объекты можно отправлять вручную через кнопку «Скопировать как Telegram-пост»
+         в карточке объекта. -->
 
 
     <div class="section-h">Пригласите друга</div>
@@ -1469,95 +1386,51 @@ function viewProfile() {
       <div class="profile-row" onclick="editProfile()">
         <span class="label">Имя и контакты</span><span class="val">${state.user.name}</span>
       </div>
+      ${state.user.role === 'Агент' ? '' : `
+      <div class="profile-row">
+        <div>
+          <div class="label">Только мои клиенты</div>
+          <div class="val" style="font-size: 11px;">${state.user.onlyMine ? 'Видны клиенты где Я — ответственный' : 'Видны все клиенты'}</div>
+        </div>
+        <div class="toggle">
+          <button class="${state.user.onlyMine?'on':''}" onclick="event.stopPropagation(); toggleOnlyMine(true)">Да</button>
+          <button class="${!state.user.onlyMine?'on':''}" onclick="event.stopPropagation(); toggleOnlyMine(false)">Нет</button>
+        </div>
+      </div>`}
       <div class="profile-row">
         <span class="label">Тема</span>
         <div class="toggle">
           <button class="${state.theme==='dark'?'on':''}" onclick="event.stopPropagation(); setTheme('dark')">Тёмная</button>
-          <button class="${!state.theme==='dark'?'on':''}" onclick="event.stopPropagation(); setTheme('light')">Светлая</button>
+          <button class="${state.theme==='light'?'on':''}" onclick="event.stopPropagation(); setTheme('light')">Светлая</button>
         </div>
       </div>
-      <a href="privacy.html" target="_blank" class="profile-row" style="text-decoration:none; color:inherit;">
-        <span class="label">Политика конфиденциальности</span><span class="val">↗</span>
-      </a>
-      <div class="profile-row" onclick="toggleAdvanced()" style="border-bottom: ${state.user.showAdvanced ? '0.5px solid var(--border)' : '0'};">
-        <span class="label">Дополнительно</span><span class="val">${state.user.showAdvanced ? '▴' : '▾'}</span>
+      <div class="profile-row" onclick="exportClientsXls()">
+        <span class="label">Экспорт клиентов</span><span class="val">.xls</span>
       </div>
-      ${state.user.showAdvanced ? `
-        ${state.user.role === 'Агент' ? '' : `
-        <div class="profile-row">
-          <div>
-            <div class="label">Только мои клиенты</div>
-            <div class="val" style="font-size: 11px;">${state.user.onlyMine ? 'Видны клиенты где Я — ответственный' : 'Видны все клиенты'}</div>
-          </div>
-          <div class="toggle">
-            <button class="${state.user.onlyMine?'on':''}" onclick="event.stopPropagation(); toggleOnlyMine(true)">Да</button>
-            <button class="${!state.user.onlyMine?'on':''}" onclick="event.stopPropagation(); toggleOnlyMine(false)">Нет</button>
-          </div>
-        </div>`}
-        <div class="profile-row" onclick="exportClientsXls()">
-          <span class="label">Экспорт клиентов</span><span class="val">.xls</span>
-        </div>
-        <div class="profile-row" onclick="exportPropsXls()">
-          <span class="label">Экспорт объектов</span><span class="val">.xls</span>
-        </div>
-        <div class="profile-row" onclick="importClientsXls()">
-          <span class="label">Импорт клиентов</span><span class="val">.csv/.xls</span>
-        </div>
-        <div class="profile-row" onclick="importPropsXls()">
-          <span class="label">Импорт объектов</span><span class="val">.csv/.xls</span>
-        </div>
-        <div class="profile-row" onclick="dedupeData()">
-          <span class="label">Найти и убрать дубликаты</span><span class="val">⊜</span>
-        </div>
-        <div class="profile-row" onclick="exportData()">
-          <span class="label">Бэкап (без фото)</span><span class="val">JSON</span>
-        </div>
-        <div class="profile-row" onclick="exportDataFull()">
-          <span class="label">Бэкап с фото</span><span class="val">JSON</span>
-        </div>
-        <div class="profile-row" onclick="importData()">
-          <span class="label">Восстановить из бэкапа</span><span class="val">JSON</span>
-        </div>
-      ` : ''}
-      <div class="profile-row" onclick="cloudSignOut()">
-        <span class="label" style="color:var(--accent);">Выйти из аккаунта</span><span class="val" style="color:var(--accent);">↗</span>
+      <div class="profile-row" onclick="exportPropsXls()">
+        <span class="label">Экспорт объектов</span><span class="val">.xls</span>
       </div>
-      <div class="profile-row" onclick="deleteMyAccount()" style="border-bottom: 0;">
-        <span class="label" style="color:var(--danger);">Удалить аккаунт безвозвратно</span><span class="val" style="color:var(--danger);">×</span>
+      <div class="profile-row" onclick="importClientsXls()">
+        <span class="label">Импорт клиентов</span><span class="val">.csv/.xls</span>
+      </div>
+      <div class="profile-row" onclick="importPropsXls()">
+        <span class="label">Импорт объектов</span><span class="val">.csv/.xls</span>
+      </div>
+      <div class="profile-row" onclick="exportData()">
+        <span class="label">Бэкап (компактный, без фото)</span><span class="val">JSON</span>
+      </div>
+      <div class="profile-row" onclick="exportDataFull()">
+        <span class="label">Бэкап ПОЛНЫЙ — с фото</span><span class="val">JSON</span>
+      </div>
+      <div class="profile-row" onclick="importData()">
+        <span class="label">Восстановить из бэкапа</span><span class="val">JSON</span>
+      </div>
+      <div class="profile-row" onclick="if(confirm('Удалить все данные приложения?')){localStorage.removeItem(LS_KEY); state=loadState(); render();}">
+        <span class="label" style="color:var(--danger);">Сбросить приложение</span><span class="val">⟲</span>
       </div>
     </div>
-    <p class="meta" style="text-align:center; margin: 20px 0; font-size: 11px;">app.каталог-сочи.рф · v1.0</p>
+    <p class="meta" style="text-align:center; margin: 20px 0; font-size: 11px;">каталог-сочи.рф · MVP v0.1</p>
   `;
-}
-function toggleAdvanced() {
-  state.user.showAdvanced = !state.user.showAdvanced;
-  saveState(state); render();
-}
-
-async function deleteMyAccount() {
-  if (!supa || !currentAgentRow) {
-    alert('Сначала войдите в облако');
-    return;
-  }
-  const confirm1 = prompt('Удаление аккаунта необратимо. Будут удалены: все клиенты, задачи, сделки, рассылки, реферальный баланс.\n\nЕсли уверены — введите слово "УДАЛИТЬ" заглавными буквами:');
-  if (confirm1 !== 'УДАЛИТЬ') return;
-  try {
-    const { data, error } = await supa.rpc('delete_my_data');
-    if (error) { alert('Ошибка: ' + error.message); return; }
-    // выходим
-    await supa.auth.signOut();
-    clearLocalUserState();
-    localStorage.removeItem('lastAuthUserId');
-    state.user.cloudConnected = false;
-    state.user.avatar = null;
-    state.user.email = '';
-    saveState(state);
-    currentAgentRow = null;
-    alert('Все ваши данные удалены. Если хотите окончательно удалить email — напишите на info@каталог-сочи.рф, мы удалим его из системы авторизации в течение 24 часов.');
-    render();
-  } catch (e) {
-    alert('Ошибка удаления: ' + e.message);
-  }
 }
 
 /* ============================== MODALS ============================== */
@@ -1625,9 +1498,10 @@ function openClient(cid) {
 function transferClient(cid) {
   const c = state.clients.find(x => x.id === cid);
   if (!c) return;
-  const agents = [...new Set((state.agents || []).filter(Boolean).filter(a => a !== c.responsible))];
-  if (!agents.length) {
-    alert('В системе нет других агентов. Добавьте сотрудника через Профиль → + Сотрудник.');
+  // используем полный список с id (только тех у кого есть auth_user_id = реальные пользователи)
+  const fullAgents = (state.agentsFull || []).filter(a => a.auth_user_id && a.name !== c.responsible);
+  if (!fullAgents.length) {
+    alert('В системе нет других подключённых агентов. Сначала пригласите коллегу зарегистрироваться в приложении.');
     return;
   }
   openModal(`
@@ -1635,12 +1509,12 @@ function transferClient(cid) {
     <p class="meta" style="margin-bottom: 14px;">Клиент: <strong style="color:var(--text);">${c.name}</strong></p>
     <p class="meta" style="margin-bottom: 10px;">Сейчас ответственный: <strong style="color:var(--text);">${c.responsible}</strong></p>
     <p class="meta" style="margin-bottom: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .3px;">Кому передать</p>
-    ${agents.map(a => `
-      <div class="card" style="cursor:pointer;" onclick="doTransferClient('${cid}','${a.replace(/'/g,"\\'")}')">
+    ${fullAgents.map(a => `
+      <div class="card" style="cursor:pointer;" onclick="doTransferClient('${cid}','${a.id}','${(a.name||'').replace(/'/g,"\\'")}')">
         <div class="card-row">
           <div>
-            <h3>${a}</h3>
-            <p class="meta">${state.clients.filter(x => x.responsible === a).length} клиентов</p>
+            <h3>${a.name}</h3>
+            <p class="meta">${state.clients.filter(x => x.responsible === a.name).length} клиентов${a.role && a.role !== 'Агент' ? ' · ' + a.role : ''}</p>
           </div>
           <span style="color:var(--accent); font-size: 18px;">↗</span>
         </div>
@@ -1649,36 +1523,42 @@ function transferClient(cid) {
     <button class="btn ghost" style="margin-top: 10px;" onclick="openClient('${cid}')">Отмена</button>
   `);
 }
-async function doTransferClient(cid, newAgent) {
+async function doTransferClient(cid, newAgentId, newAgentName) {
   const c = state.clients.find(x => x.id === cid);
   if (!c) return;
   const oldAgent = c.responsible;
-  if (!confirm(`Передать «${c.name}» от ${oldAgent} к ${newAgent}? Клиент пропадёт из вашего списка и появится у ${newAgent}.`)) return;
+  if (!confirm(`Передать «${c.name}» от ${oldAgent} к ${newAgentName}? Клиент пропадёт из вашего активного списка.`)) return;
 
-  // если есть облако — обновляем через Supabase напрямую (правильный путь)
   if (supa && currentAgentRow) {
     try {
-      const { data: ag, error: aerr } = await supa.from('agents').select('id').eq('name', newAgent).limit(1).maybeSingle();
-      if (aerr) { alert('Ошибка поиска агента: ' + aerr.message); return; }
-      if (!ag) { alert('Агент «'+newAgent+'» не найден в облаке. Сначала он должен войти в приложение хотя бы раз.'); return; }
+      // запоминаем кто был ответственный до передачи (для бледного отображения у бывшего)
+      const prev = c.previousAgentIds || [];
+      const updatedPrev = [...new Set([...prev, currentAgentRow.id])];
 
       const { error: uerr } = await supa.from('clients')
-        .update({ responsible_agent_id: ag.id, responsible_name: newAgent })
+        .update({
+          responsible_agent_id: newAgentId,
+          responsible_name: newAgentName,
+          previous_agents: updatedPrev,
+        })
         .eq('id', cid);
       if (uerr) { alert('Ошибка передачи: ' + uerr.message); return; }
 
-      // у себя локально удаляем — теперь это не наш клиент
-      state.clients = state.clients.filter(x => x.id !== cid);
+      // обновляем локально вместо удаления — пометим как переданный, видно бледно
+      c.responsible = newAgentName;
+      c.previousAgentIds = updatedPrev;
+      c.transferredAway = true; // флаг для бледного отображения
       saveState(state); closeModal(); render();
-      alert('Передан агенту ' + newAgent + '.');
+      alert('Передан агенту ' + newAgentName + '. Виден у вас бледно — работа ведётся, но ответственный теперь ' + newAgentName + '.');
     } catch (e) { alert('Сбой: ' + e.message); }
     return;
   }
 
-  // офлайн-режим (без облака): просто меняем responsible
-  c.responsible = newAgent;
+  // офлайн-режим
+  c.responsible = newAgentName;
+  c.transferredAway = true;
   saveState(state); queuePush('client', c); closeModal(); render();
-  alert('Передан агенту ' + newAgent + '. После входа в облако он увидит клиента.');
+  alert('Передан агенту ' + newAgentName + '.');
 }
 function updClient(cid, field, val) {
   const c = state.clients.find(x => x.id === cid);
@@ -1693,34 +1573,23 @@ function delClient(cid) {
   saveState(state); syncDelete('client', cid); closeModal(); render();
 }
 
-// Хелпер: текущий пользователь — владелец объекта?
-function isPropOwner(p) {
-  if (!p) return false;
-  if (state.user.role === 'Директор') return true;
-  const myId = currentAgentRow?.id;
-  return p.agentId === myId || p.agent === state.user.name;
-}
 function openProperty(pid) {
   const p = state.properties.find(x => x.id === pid);
   if (!p) return;
-  const owns = isPropOwner(p);
   const photos = Array.isArray(p.photos) ? p.photos : [];
   const photosGrid = photos.length ?
     photos.map((src, i) => `
       <div style="position:relative; aspect-ratio: 4/3; background: var(--surface-2) center/cover url('${src}'); border-radius: 10px;">
-        ${owns ? `<button class="photo-del" onclick="delPropPhoto('${p.id}', ${i})">×</button>` : ''}
+        <button class="photo-del" onclick="delPropPhoto('${p.id}', ${i})">×</button>
       </div>`).join('') : '';
-  const canAddPhoto = owns && photos.length < 10;
-  const ro = owns ? '' : 'readonly disabled';
-  const disSel = owns ? '' : 'disabled';
+  const canAddPhoto = photos.length < 5;
   openModal(`
     <h2>${p.complex || p.title}</h2>
-    ${!owns ? `<div class="card" style="background: var(--surface-2); padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: var(--text-muted);">👁 Только просмотр — объект добавил ${p.agent || 'другой агент'}</div>` : ''}
     <div style="display:grid; grid-template-columns: repeat(${Math.min(5, Math.max(2, photos.length+1))}, 1fr); gap: 6px; margin-bottom: 14px;">
       ${photosGrid}
       ${canAddPhoto ? `
         <label class="photo-add">
-          <span>+ Фото<br><small>${photos.length}/10</small></span>
+          <span>+ Фото<br><small>${photos.length}/5</small></span>
           <input type="file" accept="image/*" multiple style="display:none" onchange="uploadPropPhotos('${p.id}', this)">
         </label>
       ` : ''}
@@ -1729,87 +1598,59 @@ function openProperty(pid) {
       <button class="btn" onclick="shareProperty('${p.id}')">Поделиться</button>
       <button class="btn ghost" onclick="downloadPropertyPdf('${p.id}')">PDF</button>
     </div>
-    ${owns ? `
-      <div class="btn-row" style="margin-bottom: 14px;">
-        <button class="btn ghost" onclick="scheduleBroadcast('${p.id}')">📣 Запланировать TG</button>
-        <button class="btn ghost" onclick="copyAsTgPost('${p.id}')">📋 Скопировать пост</button>
-      </div>
-    ` : ''}
-    <div class="field"><label>ЖК / Комплекс (обязательно)</label><input value="${p.complex||''}" ${ro} onchange="updProp('${p.id}','complex',this.value)" placeholder="ЖК Морская симфония"></div>
-    <div class="field"><label>Название/№ объекта</label><input value="${p.title||''}" ${ro} onchange="updProp('${p.id}','title',this.value)" placeholder="кв.142"></div>
+    <button class="btn ghost" style="margin-bottom: 14px;" onclick="copyAsTgPost('${p.id}')">📋 Скопировать как Telegram-пост</button>
+    <div class="field"><label>ЖК / Комплекс (обязательно)</label><input value="${p.complex||''}" onchange="updProp('${p.id}','complex',this.value)" placeholder="ЖК Морская симфония"></div>
+    <div class="field"><label>Название/№ объекта</label><input value="${p.title||''}" onchange="updProp('${p.id}','title',this.value)" placeholder="кв.142"></div>
     <div class="field"><label>Тип</label>
-      <select ${disSel} onchange="updProp('${p.id}','kind',this.value)">
+      <select onchange="updProp('${p.id}','kind',this.value)">
         <option value="new" ${p.kind==='new'?'selected':''}>Новостройка</option>
         <option value="flat" ${p.kind==='flat'?'selected':''}>Квартира</option>
         <option value="house" ${p.kind==='house'?'selected':''}>Дом / коттедж</option>
       </select>
     </div>
     <div class="field"><label>Спален</label>
-      <select ${disSel} onchange="updProp('${p.id}','bedrooms', this.value===''?null:+this.value)">
+      <select onchange="updProp('${p.id}','bedrooms', this.value===''?null:+this.value)">
         <option value="" ${p.bedrooms==null?'selected':''}>— не задано —</option>
         ${[0,1,2,3,4,5].map(n => `<option value="${n}" ${p.bedrooms===n?'selected':''}>${bedroomsLabel(n)}</option>`).join('')}
       </select>
     </div>
     <div class="field"><label>Ремонт</label>
-      <select ${disSel} onchange="updProp('${p.id}','reno',this.value)">
+      <select onchange="updProp('${p.id}','reno',this.value)">
         <option value="" ${!p.reno?'selected':''}>Без ремонта</option>
         <option value="cosmetic" ${p.reno==='cosmetic'?'selected':''}>Косметический</option>
         <option value="euro" ${p.reno==='euro'?'selected':''}>Евроремонт</option>
         <option value="design" ${p.reno==='design'?'selected':''}>Дизайнерский</option>
       </select>
     </div>
-    <div class="field"><label>Площадь</label><input value="${p.area||''}" ${ro} onchange="updProp('${p.id}','area',this.value)"></div>
-    <div class="field"><label>Цена (₽, обязательно)</label><input value="${p.price||0}" type="number" ${ro} onchange="updProp('${p.id}','price',+this.value)"></div>
-    <div class="field"><label>Комиссия (₽ или %)</label><input value="${p.commission||''}" ${ro} onchange="updProp('${p.id}','commission',this.value)" placeholder="напр. 3% или 372 000"></div>
-    <div class="field"><label>Район (обязательно)</label><input value="${p.district||''}" ${ro} onchange="updProp('${p.id}','district',this.value)"></div>
-    <div class="field"><label>Застройщик</label><input value="${p.developer||''}" ${ro} onchange="updProp('${p.id}','developer',this.value)"></div>
+    <div class="field"><label>Площадь</label><input value="${p.area||''}" onchange="updProp('${p.id}','area',this.value)"></div>
+    <div class="field"><label>Цена (₽)</label><input value="${p.price||0}" type="number" onchange="updProp('${p.id}','price',+this.value)"></div>
+    <div class="field"><label>Комиссия (₽ или %)</label><input value="${p.commission||''}" onchange="updProp('${p.id}','commission',this.value)" placeholder="напр. 3% или 372 000"></div>
+    <div class="field"><label>Район</label><input value="${p.district||''}" onchange="updProp('${p.id}','district',this.value)"></div>
+    <div class="field"><label>Застройщик</label><input value="${p.developer||''}" onchange="updProp('${p.id}','developer',this.value)"></div>
     <div class="field"><label>Агент (кто добавил)</label>
-      <input list="agents-list-prop" value="${p.agent||''}" ${ro} onchange="updProp('${p.id}','agent',this.value); ensureAgent(this.value)" placeholder="Имя агента">
+      <input list="agents-list-prop" value="${p.agent||''}" onchange="updProp('${p.id}','agent',this.value); ensureAgent(this.value)" placeholder="Имя агента">
       <datalist id="agents-list-prop">${(state.agents||[]).map(a=>`<option value="${a}">`).join('')}</datalist>
     </div>
-    <div class="field"><label>Телефон агента</label><input type="tel" value="${p.agentPhone||state.agentPhones?.[p.agent]||''}" ${ro} onchange="updProp('${p.id}','agentPhone',this.value)" placeholder="+7"></div>
-    ${owns ? `
+    <div class="field"><label>Телефон агента</label><input type="tel" value="${p.agentPhone||state.agentPhones?.[p.agent]||''}" onchange="updProp('${p.id}','agentPhone',this.value)" placeholder="+7"></div>
+    ${(state.user.role === 'Директор' || p.agent === state.user.name) ? `
       <div class="card" style="background: rgba(127,119,221,.1); padding: 12px; margin-bottom: 12px;">
         <p class="meta" style="margin: 0 0 8px; color: #7F77DD; font-size: 11px;">🔒 Контакт собственника · виден только вам</p>
         <div class="field" style="margin-bottom: 8px;"><label>Имя собственника</label><input value="${p.ownerName||''}" onchange="updProp('${p.id}','ownerName',this.value)" placeholder="ФИО"></div>
         <div class="field" style="margin-bottom: 0;"><label>Телефон собственника</label><input type="tel" value="${p.ownerPhone||''}" onchange="updProp('${p.id}','ownerPhone',this.value)" placeholder="+7"></div>
       </div>` : ''}
-    <div class="field"><label>Описание</label><textarea ${ro} onchange="updProp('${p.id}','note',this.value)">${p.note||''}</textarea></div>
-    ${owns ? `
-      <div class="field"><label>Ближайшее событие (в календарь)</label>
-        <input type="datetime-local" value="${p.nextEvent?p.nextEvent.slice(0,16):''}" onchange="updProp('${p.id}','nextEvent', this.value?new Date(this.value).toISOString():null)">
-      </div>
-      <div class="field"><label>Что за событие</label>
-        <select onchange="updProp('${p.id}','nextEventTitle',this.value)">
-          <option value="">— выберите —</option>
-          ${['Показ объекта','Встреча с собственником','Подписание','Осмотр','Фотосессия','Бронирование'].map(a=>`<option ${p.nextEventTitle===a?'selected':''}>${a}</option>`).join('')}
-        </select>
-      </div>
-    ` : ''}
+    <div class="field"><label>Описание</label><textarea onchange="updProp('${p.id}','note',this.value)">${p.note||''}</textarea></div>
+    <div class="field"><label>Ближайшее событие (в календарь)</label>
+      <input type="datetime-local" value="${p.nextEvent?p.nextEvent.slice(0,16):''}" onchange="updProp('${p.id}','nextEvent', this.value?new Date(this.value).toISOString():null)">
+    </div>
+    <div class="field"><label>Что за событие</label>
+      <select onchange="updProp('${p.id}','nextEventTitle',this.value)">
+        <option value="">— выберите —</option>
+        ${['Показ объекта','Встреча с собственником','Подписание','Осмотр','Фотосессия','Бронирование'].map(a=>`<option ${p.nextEventTitle===a?'selected':''}>${a}</option>`).join('')}
+      </select>
+    </div>
     <button class="btn" onclick="closeModal()">Готово</button>
-    ${owns ? `<button class="btn danger" style="margin-top:8px;" onclick="delProp('${p.id}')">Удалить объект</button>` : ''}
+    <button class="btn danger" style="margin-top:8px;" onclick="delProp('${p.id}')">Удалить объект</button>
   `);
-}
-
-async function uploadOnePhotoToStorage(blob, propId) {
-  if (!supa || !currentAgentRow) return null;
-  try {
-    const filename = `${propId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
-    const { error } = await supa.storage.from('property-photos').upload(filename, blob, {
-      contentType: 'image/jpeg', cacheControl: '3600', upsert: false,
-    });
-    if (error) {
-      console.warn('storage upload:', error);
-      if (typeof toast === 'function') toast('Ошибка загрузки фото: ' + (error.message || ''), 'error', 4000);
-      return null;
-    }
-    const { data } = supa.storage.from('property-photos').getPublicUrl(filename);
-    return data?.publicUrl || null;
-  } catch(e) {
-    console.warn(e);
-    if (typeof toast === 'function') toast('Ошибка фото: ' + (e.message || ''), 'error', 4000);
-    return null;
-  }
 }
 
 function uploadPropPhotos(pid, input) {
@@ -1817,15 +1658,16 @@ function uploadPropPhotos(pid, input) {
   if (!p) return;
   if (!Array.isArray(p.photos)) p.photos = [];
   const files = Array.from(input.files || []);
-  const slotsLeft = 10 - p.photos.length;
-  if (slotsLeft <= 0) { alert('Максимум 10 фото'); return; }
+  const slotsLeft = 5 - p.photos.length;
+  if (slotsLeft <= 0) { alert('Максимум 5 фото'); return; }
   const filesToProcess = files.slice(0, slotsLeft);
   let processed = 0;
   filesToProcess.forEach(file => {
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
-      img.onload = async () => {
+      img.onload = () => {
+        // двойной ресайз — при огромных фото сжимаем сначала до 1600, потом до 1000
         const max = 1000;
         const ratio = Math.min(max / img.width, max / img.height, 1);
         const canvas = document.createElement('canvas');
@@ -1834,25 +1676,23 @@ function uploadPropPhotos(pid, input) {
         const ctx = canvas.getContext('2d');
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // подбираем качество — начинаем с 0.78, при превышении 280 КБ снижаем
         let quality = 0.78;
         let dataUrl = canvas.toDataURL('image/jpeg', quality);
         while (dataUrl.length > 380000 && quality > 0.35) {
           quality -= 0.1;
           dataUrl = canvas.toDataURL('image/jpeg', quality);
         }
-        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
-        const storageUrl = await uploadOnePhotoToStorage(blob, pid);
         try {
-          p.photos.push(storageUrl || dataUrl);
+          p.photos.push(dataUrl);
           saveState(state);
-          if (storageUrl) queuePush('property', p);
           processed++; checkDone();
         } catch (err) {
-          alert('Не хватает места локально — фото сохранено в облаке');
+          alert('Не хватает места в хранилище. Удалите часть фото у других объектов.');
           processed++; checkDone();
         }
       };
-      img.onerror = () => { alert('Не удалось прочитать фото'); processed++; checkDone(); };
+      img.onerror = () => { alert('Не удалось прочитать фото "'+file.name+'"'); processed++; checkDone(); };
       img.src = e.target.result;
     };
     reader.onerror = () => { processed++; checkDone(); };
@@ -2036,23 +1876,10 @@ function saveNewClient() {
   state.clients.unshift(newClient);
   saveState(state); queuePush('client', newClient); closeModal(); render();
 }
-// буфер фото при создании нового объекта (data:URL → сжатые, потом загрузятся в Storage)
-let newPropPhotos = [];
 function addProperty() {
-  newPropPhotos = [];
   const complexes = [...new Set(state.properties.map(p => p.complex).filter(Boolean))];
   openModal(`
     <h2>Новый объект</h2>
-    <div class="card" style="background: linear-gradient(135deg, rgba(201,163,106,.08), rgba(201,163,106,.02)); padding: 14px; margin-bottom: 14px; border: 1px solid rgba(201,163,106,.25);">
-      <p class="meta" style="margin: 0 0 8px; color: var(--accent); font-size: 12px;">📸 Шаг 1: Фото (минимум 1, до 10)</p>
-      <p class="meta" style="margin: 0 0 10px; font-size: 11px;">Без фото публикация и продажи не работают</p>
-      <div id="np-photos-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 6px;"></div>
-      <label class="btn" style="margin-top: 10px; display: block; text-align: center; cursor: pointer;">
-        + Загрузить фото
-        <input type="file" accept="image/*" multiple style="display:none" onchange="addPhotosToNewProp(this)">
-      </label>
-    </div>
-    <p class="meta" style="margin: 14px 0 8px; font-size: 12px;">📝 Шаг 2: Данные объекта</p>
     <div class="field"><label>ЖК / Комплекс (обязательно)</label>
       <input id="np-complex" list="np-complex-list" placeholder="ЖК Морская симфония">
       <datalist id="np-complex-list">${complexes.map(c=>`<option value="${c}">`).join('')}</datalist>
@@ -2074,106 +1901,33 @@ function addProperty() {
       </select>
     </div>
     <div class="field"><label>Площадь</label><input id="np-area" placeholder="64 м²"></div>
-    <div class="field"><label>Цена ₽ (обязательно)</label><input id="np-price" type="number"></div>
+    <div class="field"><label>Цена (₽)</label><input id="np-price" type="number"></div>
     <div class="field"><label>Комиссия (₽ или %)</label><input id="np-commission" placeholder="3% или 372 000"></div>
-    <div class="field"><label>Район (обязательно)</label><input id="np-district"></div>
-    <button class="btn" onclick="saveNewProp()">Создать объект</button>
+    <div class="field"><label>Район</label><input id="np-district"></div>
+    <button class="btn" onclick="saveNewProp()">Создать</button>
+    <p class="meta" style="text-align:center; margin-top: 12px;">Фото можно добавить после создания</p>
   `);
 }
-function renderNewPropPhotos() {
-  const grid = document.getElementById('np-photos-grid');
-  if (!grid) return;
-  grid.innerHTML = newPropPhotos.map((src, i) => `
-    <div style="position:relative; aspect-ratio: 1; background: var(--surface-2) center/cover url('${src}'); border-radius: 8px;">
-      <button class="photo-del" onclick="event.preventDefault(); removeNewPropPhoto(${i})">×</button>
-    </div>
-  `).join('');
-}
-function removeNewPropPhoto(idx) {
-  newPropPhotos.splice(idx, 1);
-  renderNewPropPhotos();
-}
-function addPhotosToNewProp(input) {
-  const files = Array.from(input.files || []);
-  const slotsLeft = 10 - newPropPhotos.length;
-  if (slotsLeft <= 0) { toast('Максимум 10 фото', 'error'); return; }
-  const filesToProcess = files.slice(0, slotsLeft);
-  filesToProcess.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        // сжатие до 1200px по большей стороне, jpeg 0.82 (~150-280КБ)
-        const max = 1200;
-        const ratio = Math.min(max / img.width, max / img.height, 1);
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(img.width * ratio);
-        canvas.height = Math.round(img.height * ratio);
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        newPropPhotos.push(canvas.toDataURL('image/jpeg', 0.82));
-        renderNewPropPhotos();
-      };
-      img.onerror = () => toast('Не удалось прочесть фото', 'error');
-      img.src = e.target.result;
-    };
-    reader.onerror = () => toast('Не удалось загрузить файл', 'error');
-    reader.readAsDataURL(file);
-  });
-  input.value = ''; // позволяет загрузить тот же файл повторно
-}
-
-async function saveNewProp() {
+function saveNewProp() {
   const complex = document.getElementById('np-complex').value.trim();
-  const district = document.getElementById('np-district').value.trim();
-  const price = +document.getElementById('np-price').value || 0;
-  if (newPropPhotos.length === 0) { alert('Добавьте хотя бы одно фото объекта'); return; }
   if (!complex) { alert('Укажите ЖК / комплекс'); return; }
-  if (!district) { alert('Укажите район'); return; }
-  if (!price) { alert('Укажите цену'); return; }
   const bedroomsRaw = document.getElementById('np-bedrooms').value;
-  const newPropId = id();
-  // загружаем все фото в Storage параллельно
-  const uploadedUrls = [];
-  if (supa && currentAgentRow) {
-    toast('Загружаем фото...', 'info', 2000);
-    const tasks = newPropPhotos.map(async (dataUrl) => {
-      try {
-        const blob = await (await fetch(dataUrl)).blob();
-        const url = await uploadOnePhotoToStorage(blob, newPropId);
-        return url || dataUrl; // fallback на data:URL если Storage недоступен
-      } catch(e) {
-        console.warn('photo upload failed:', e);
-        return dataUrl;
-      }
-    });
-    const results = await Promise.all(tasks);
-    results.forEach(u => uploadedUrls.push(u));
-  } else {
-    // оффлайн — сохраняем data:URL, при подключении к облаку фото уйдут в Storage
-    uploadedUrls.push(...newPropPhotos);
-  }
   const newProp = {
-    id: newPropId, complex, title: document.getElementById('np-title').value || '—',
+    id: id(), complex, title: document.getElementById('np-title').value || '—',
     kind: document.getElementById('np-kind').value,
     bedrooms: bedroomsRaw === '' ? null : +bedroomsRaw,
     reno: document.getElementById('np-reno').value,
     area: document.getElementById('np-area').value,
-    price,
+    price: +document.getElementById('np-price').value || 0,
     commission: document.getElementById('np-commission').value || '',
-    district,
-    developer: '', note: '', photos: uploadedUrls,
+    district: document.getElementById('np-district').value,
+    developer: '', note: '', photos: [],
     agent: state.user.name,
-    agentId: currentAgentRow?.id || null,
     agentPhone: state.user.phone || state.agentPhones?.[state.user.name] || '',
     createdAt: new Date().toISOString(),
   };
   state.properties.unshift(newProp);
-  saveState(state); queuePush('property', newProp);
-  newPropPhotos = [];
-  toast(`Объект создан с ${uploadedUrls.length} фото`, 'success', 3000);
-  closeModal(); render();
+  saveState(state); queuePush('property', newProp); closeModal(); render();
 }
 function addTask() {
   const now = new Date(); now.setMinutes(0,0,0); now.setHours(now.getHours()+1);
@@ -2278,81 +2032,63 @@ function saveNewPartner() {
 }
 
 function editProfile() {
-  const av = state.user.avatar;
-  const avatarPreview = av
-    ? `<img id="up-avatar-img" src="${av}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`
-    : `<div id="up-avatar-img" class="avatar acc" style="width:80px;height:80px;font-size:24px;">${initials(state.user.name)}</div>`;
+  const isAdmin = state.user.role === 'Директор' || state.user.role === 'Руководитель отдела';
   openModal(`
-    <h2>Профиль</h2>
-    <div style="display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:14px;">
-      ${avatarPreview}
-      <label class="btn ghost" style="display:inline-block; cursor:pointer; margin:0;">
-        ${av ? 'Сменить фото' : 'Загрузить фото'}
-        <input type="file" accept="image/*" style="display:none;" onchange="uploadAvatar(this)">
-      </label>
-      ${av ? `<button class="btn ghost" style="font-size:12px; padding:4px 10px;" onclick="removeAvatar()">Удалить фото</button>` : ''}
+    <h2>Мой профиль</h2>
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:14px;">
+      <div id="up-avatar-preview" style="width: 72px; height: 72px; border-radius: 50%; ${state.user.avatar ? `background-image: url('${state.user.avatar}'); background-size: cover; background-position: center;` : 'background: var(--accent); color: var(--accent-text); display:flex; align-items:center; justify-content:center; font-weight: 600; font-size: 22px;'}">
+        ${state.user.avatar ? '' : initials(state.user.name)}
+      </div>
+      <div style="flex:1;">
+        <label class="btn ghost" style="cursor:pointer;">
+          Загрузить фото
+          <input type="file" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
+        </label>
+        ${state.user.avatar ? '<button class="btn ghost" style="margin-top: 4px; color:var(--danger);" onclick="removeAvatar()">Удалить фото</button>' : ''}
+      </div>
     </div>
-    <div class="field"><label>Имя</label><input id="up-name" value="${state.user.name}"></div>
-    <div class="field"><label>Телефон</label><input id="up-phone" type="tel" value="${state.user.phone||''}"></div>
-    <div class="field"><label>Город</label><input id="up-city" value="${state.user.city}"></div>
-    <div class="field"><label>Роль</label>
-      <select id="up-role">
-        ${['Агент','Руководитель отдела','Директор'].map(r=>`<option ${state.user.role===r?'selected':''}>${r}</option>`).join('')}
-      </select>
-    </div>
+
+    <div class="field"><label>ФИО</label><input id="up-name" value="${state.user.name||''}" placeholder="Иванов Иван"></div>
+    <div class="field"><label>Телефон</label><input id="up-phone" type="tel" value="${state.user.phone||''}" placeholder="+7..."></div>
+    <div class="field"><label>Email</label><input id="up-email" type="email" value="${state.user.email||''}" disabled style="opacity:.6;"></div>
+    <div class="field"><label>Город</label><input id="up-city" value="${state.user.city||''}" placeholder="Сочи"></div>
+    ${isAdmin ? `
+      <div class="field"><label>Роль</label>
+        <select id="up-role">
+          ${['Агент','Руководитель отдела','Директор'].map(r=>`<option ${state.user.role===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+      </div>
+    ` : `<div class="field"><label>Роль</label><input value="${state.user.role}" disabled style="opacity:.6;"></div>`}
+
     <button class="btn" onclick="saveProfile()">Сохранить</button>
   `);
 }
-async function uploadAvatar(input) {
-  const file = input.files && input.files[0];
-  if (!file) return;
-  try {
-    const dataUrl = await new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = e => resolve(e.target.result);
-      fr.onerror = reject;
-      fr.readAsDataURL(file);
-    });
-    const img = await new Promise((resolve, reject) => {
-      const i = new Image();
-      i.onload = () => resolve(i);
-      i.onerror = reject;
-      i.src = dataUrl;
-    });
-    // обрезаем по центру в квадрат и уменьшаем до 240x240
-    const size = Math.min(img.width, img.height);
-    const sx = (img.width - size) / 2;
-    const sy = (img.height - size) / 2;
-    const canvas = document.createElement('canvas');
-    canvas.width = 240; canvas.height = 240;
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, sx, sy, size, size, 0, 0, 240, 240);
-    const compressed = canvas.toDataURL('image/jpeg', 0.85);
-    state.user.avatar = compressed;
-    // обновляем превью в модалке
-    const preview = document.getElementById('up-avatar-img');
-    if (preview) {
-      if (preview.tagName === 'IMG') preview.src = compressed;
-      else preview.outerHTML = `<img id="up-avatar-img" src="${compressed}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;">`;
-    }
-    // пушим в облако если подключено
-    if (supa && currentAgentRow) {
-      supa.from('agents').update({ avatar_url: compressed }).eq('id', currentAgentRow.id)
-        .then(({ error }) => { if (error) console.warn('avatar push:', error); });
-    }
-    saveState(state);
-  } catch(e) {
-    console.error('uploadAvatar:', e);
-    alert('Не удалось загрузить фото');
-  }
+function uploadAvatar(input) {
+  const f = input.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      // сжимаем до 256x256
+      const c = document.createElement('canvas');
+      const sz = 256;
+      c.width = sz; c.height = sz;
+      const ctx = c.getContext('2d');
+      // crop center square
+      const minSide = Math.min(img.width, img.height);
+      const sx = (img.width - minSide) / 2;
+      const sy = (img.height - minSide) / 2;
+      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, sz, sz);
+      state.user.avatar = c.toDataURL('image/jpeg', 0.85);
+      saveState(state);
+      editProfile(); // переоткрыть с новым превью
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(f);
 }
 function removeAvatar() {
-  state.user.avatar = null;
-  if (supa && currentAgentRow) {
-    supa.from('agents').update({ avatar_url: null }).eq('id', currentAgentRow.id)
-      .then(({ error }) => { if (error) console.warn('avatar remove:', error); });
-  }
+  delete state.user.avatar;
   saveState(state);
   editProfile();
 }
@@ -2360,50 +2096,22 @@ function saveProfile() {
   state.user.name = document.getElementById('up-name').value;
   state.user.phone = document.getElementById('up-phone').value;
   state.user.city = document.getElementById('up-city').value;
-  state.user.role = document.getElementById('up-role').value;
-  saveState(state); closeModal(); render();
-}
-
-async function dedupeData() {
-  // Находим дубли по содержимому (имя+телефон у клиентов, ЖК+цена у объектов и т.п.)
-  function dedupeBy(list, keyFn) {
-    const seen = new Map(); // key -> { keep, dropIds: [] }
-    list.forEach(item => {
-      const k = keyFn(item);
-      if (!k) return;
-      const ts = item.updatedAt || item.created_at || 0;
-      const prev = seen.get(k);
-      if (!prev) seen.set(k, { keep: item, dropIds: [] });
-      else {
-        const prevTs = prev.keep.updatedAt || prev.keep.created_at || 0;
-        if (ts > prevTs) {
-          prev.dropIds.push(prev.keep.id);
-          prev.keep = item;
-        } else {
-          prev.dropIds.push(item.id);
-        }
-      }
-    });
-    const dropIds = new Set();
-    seen.forEach(v => v.dropIds.forEach(id => dropIds.add(id)));
-    return { kept: list.filter(x => !dropIds.has(x.id)), dropped: [...dropIds] };
-  }
-  const cli = dedupeBy(state.clients, c => `${(c.name||'').toLowerCase().trim()}|${(c.phone||'').replace(/\D/g,'')}`);
-  const props = dedupeBy(state.properties, p => `${(p.complex||'').toLowerCase().trim()}|${(p.title||'').toLowerCase().trim()}|${p.price||''}`);
-  const dl = dedupeBy(state.deals, d => `${(d.object||'').toLowerCase().trim()}|${(d.client||'').toLowerCase().trim()}|${d.date||''}`);
-  const total = cli.dropped.length + props.dropped.length + dl.dropped.length;
-  if (total === 0) { alert('Дубликатов не найдено'); return; }
-  if (!confirm(`Найдено дубликатов:\n• Клиенты: ${cli.dropped.length}\n• Объекты: ${props.dropped.length}\n• Сделки: ${dl.dropped.length}\n\nУдалить?`)) return;
-  // помечаем tombstone'ом и физически удаляем
-  cli.dropped.forEach(id => syncDelete('client', id));
-  props.dropped.forEach(id => syncDelete('property', id));
-  dl.dropped.forEach(id => syncDelete('deal', id));
-  state.clients = cli.kept;
-  state.properties = props.kept;
-  state.deals = dl.kept;
+  const roleEl = document.getElementById('up-role');
+  if (roleEl) state.user.role = roleEl.value;
   saveState(state);
-  render();
-  alert(`Удалено ${total} дублей`);
+  // если в облаке — пушим в agents
+  if (supa && currentAgentRow) {
+    supa.from('agents').update({
+      name: state.user.name,
+      phone: state.user.phone,
+      city: state.user.city,
+      role: state.user.role,
+      avatar_url: state.user.avatar || null,
+    }).eq('id', currentAgentRow.id).then(({error}) => {
+      if (error) console.error('save profile to cloud:', error);
+    });
+  }
+  closeModal(); render();
 }
 
 function exportData() {
@@ -2589,10 +2297,7 @@ function downloadXls(filename, rows) {
   URL.revokeObjectURL(url);
 }
 function exportClientsXls() {
-  // экспорт только своих клиентов (где ты — ответственный агент)
-  const me = state.user.name;
-  const list = state.clients.filter(c => c.responsible === me || !c.responsible);
-  if (!list.length) { alert('У вас пока нет клиентов для экспорта'); return; }
+  const list = visibleClients();
   const rows = [['Имя','Телефон','Статус','Запрос','Тип','Бюджет млн','Район','Ответственный','След. контакт','Действие','Комментарий']];
   list.forEach(c => rows.push([
     c.name, c.phone, statusLabel(c.status), c.requestComment, c.type,
@@ -2600,15 +2305,16 @@ function exportClientsXls() {
     c.nextContact ? fmtDateTime(c.nextContact) : '',
     c.nextAction, c.note
   ]));
-  downloadXls('my-clients', rows);
+  downloadXls('clients-sochi', rows);
 }
 function exportPropsXls() {
   const u = state.user;
-  const myId = currentAgentRow?.id;
-  // экспорт только своих объектов (где ты — добавивший)
-  const list = state.properties.filter(p => p.agent === u.name || p.agentId === myId);
-  if (!list.length) { alert('У вас пока нет объектов для экспорта'); return; }
-  const headers = ['ЖК','Объект','Тип','Спален','Площадь','Цена','Комиссия','Район','Застройщик','Ремонт','Описание'];
+  const isDirector = u.role === 'Директор' || u.role === 'Руководитель отдела';
+  // агенту — только его объекты, директору — все с колонкой агента
+  const list = isDirector ? state.properties : state.properties.filter(p => p.agent === u.name);
+  const headers = ['ЖК','Объект','Тип','Спален','Площадь','Цена','Комиссия','Район','Застройщик','Ремонт'];
+  if (isDirector) headers.push('Агент','Тел. агента');
+  headers.push('Описание');
   const rows = [headers];
   list.forEach(p => {
     const row = [
@@ -2616,23 +2322,21 @@ function exportPropsXls() {
       p.bedrooms != null ? bedroomsLabel(p.bedrooms) : '',
       p.area, p.price, p.commission, p.district, p.developer,
       ({cosmetic:'Косметический',euro:'Евроремонт',design:'Дизайнерский'})[p.reno] || '',
-      p.note||''
     ];
+    if (isDirector) row.push(p.agent||'', p.agentPhone||state.agentPhones?.[p.agent]||'');
+    row.push(p.note||'');
     rows.push(row);
   });
-  downloadXls('my-properties', rows);
+  downloadXls('properties-sochi', rows);
+  if (!isDirector && list.length === 0) {
+    setTimeout(()=>alert('У вас пока нет добавленных объектов. Файл выгружен пустым.'), 100);
+  }
 }
 
 function getRefLink() {
-  // Короткая ссылка вида app.каталог-сочи.рф/КОД
-  // 404.html на GitHub Pages редиректит /КОД → /?ref=КОД
-  const code = state.user.refCode || 'CA0000';
-  // если открыты по app-домену — используем его, иначе fallback на текущий
-  const isAppDomain = /app\.каталог-сочи|app\.xn--/.test(location.host);
-  const base = isAppDomain
-    ? location.origin
-    : location.origin + location.pathname.replace(/\/[^\/]*$/, '');
-  return base + '/' + code;
+  // используем текущий домен (каталог-сочи.рф когда задеплоим, GitHub Pages пока)
+  const base = location.origin + location.pathname.replace(/\/[^\/]*$/, '/');
+  return base + '?ref=' + (state.user.refCode || 'CA0000');
 }
 function copyRef() {
   navigator.clipboard?.writeText(getRefLink()).then(()=>alert('Ссылка скопирована'));
@@ -2784,15 +2488,7 @@ function scheduleBroadcast(propId) {
   }
   const p = state.properties.find(x => x.id === propId);
   if (!p) return;
-  if (!p.photos || !p.photos.length) {
-    alert('Сначала добавьте хотя бы одно фото к объекту — без фото рассылка не имеет смысла');
-    return;
-  }
-  // по умолчанию: сейчас + 2 минуты (чтобы крон точно подхватил)
-  const now = new Date(Date.now() + 2 * 60 * 1000);
-  // компенсируем смещение часового пояса для datetime-local
-  const tzOffset = now.getTimezoneOffset() * 60000;
-  const nowLocal = new Date(now.getTime() - tzOffset).toISOString().slice(0,16);
+  const now = new Date(); now.setMinutes(0,0,0); now.setHours(now.getHours()+1);
   openModal(`
     <h2>Запланировать рассылку</h2>
     <p class="meta" style="margin-bottom: 14px;">Объект: <strong style="color:var(--text);">${p.complex} · ${p.title}</strong></p>
@@ -2809,7 +2505,7 @@ function scheduleBroadcast(propId) {
         `).join('')}
       </div>
     </div>
-    <div class="field"><label>Когда отправить (по умолчанию через 2 минуты)</label><input id="bc-when" type="datetime-local" value="${nowLocal}"></div>
+    <div class="field"><label>Когда отправить</label><input id="bc-when" type="datetime-local" value="${now.toISOString().slice(0,16)}"></div>
     <div class="field"><label>Доп. текст (опционально)</label><textarea id="bc-note" placeholder="Эксклюзив, торг возможен…"></textarea></div>
     <button class="btn" onclick="saveBroadcast('${propId}')">Запланировать</button>
   `);
@@ -2831,7 +2527,7 @@ function saveBroadcast(propId) {
       note,
       status: 'pending',
       sentAt: null,
-      createdBy: currentAgentRow?.id || null,
+      createdBy: state.user.name,
     };
     state.broadcasts.push(b);
     queuePush('broadcast', b);
@@ -2840,31 +2536,27 @@ function saveBroadcast(propId) {
   saveState(state);
   closeModal();
   render();
-  toast(`Запланировано: ${checked.length} рассылок. Бот отправит в течение 2 минут`, 'success', 4500);
+  alert('Запланировано: ' + checked.length + ' рассылок.\nКрон Supabase каждую минуту проверяет очередь и шлёт когда время пришло.');
 }
 async function sendBroadcastNow(bid) {
   if (!supa) { alert('Нужен вход в облако'); return; }
   const b = state.broadcasts.find(x => x.id === bid);
   if (!b) return;
-  // ставим время в прошлое — крон Supabase подхватит в течение минуты
-  b.when = new Date(Date.now() - 60000).toISOString();
+  // ставим время в прошлое и сразу триггерим обработчик
+  b.when = new Date(Date.now() - 5000).toISOString();
   b.status = 'pending';
   saveState(state);
-  const { error } = await supa.from('tg_broadcasts')
-    .update({ when_at: b.when, status: 'pending', error_text: null })
-    .eq('id', bid);
+  await supa.from('tg_broadcasts').update({ when_at: b.when, status: 'pending' }).eq('id', bid);
+  const { data, error } = await supa.rpc('process_tg_broadcasts');
   if (error) { alert('Ошибка: ' + error.message); return; }
-  closeModal();
-  alert('Поставлено в очередь. Бот отправит в течение минуты. Откройте «Расписание» позже чтобы увидеть статус «sent».');
-  // через 70 секунд автоматически синхронизируем
-  setTimeout(async () => { await syncPullAll(); render(); }, 70000);
+  // подтянуть актуальный статус
+  await syncPullAll();
+  const updated = state.broadcasts.find(x => x.id === bid);
+  alert('Обработано: ' + data + ' рассылок. Статус этой: ' + (updated?.status || 'unknown') + (updated?.errorText ? '\n\n' + updated.errorText : ''));
+  manageBroadcasts();
 }
 function manageBroadcasts() {
-  // показываем только свои рассылки. Директор видит все через is_admin RLS, но в UI ограничиваем для чистоты.
-  const myId = currentAgentRow?.id;
-  const list = (state.broadcasts || []).filter(b =>
-    !myId || !b.createdBy || b.createdBy === myId || (state.user.role === 'Директор')
-  ).slice().sort((a,b) => new Date(b.when) - new Date(a.when));
+  const list = (state.broadcasts || []).slice().sort((a,b) => new Date(b.when) - new Date(a.when));
   openModal(`
     <h2>Расписание рассылок</h2>
     <p class="meta" style="margin-bottom: 14px;">Всего: ${list.length}. Pending — ждёт отправки, sent — отправлено.</p>
@@ -3084,6 +2776,7 @@ function clientToDB(c) {
 function clientFromDB(r) {
   const noteRaw = r.note || '';
   const isPriority = noteRaw.includes('[⭐priority]');
+  const prevAgents = Array.isArray(r.previous_agents) ? r.previous_agents : [];
   return {
     id: r.id, name: r.name, phone: r.phone, status: r.status || 'new',
     requestComment: r.request_comment || '', type: r.type || '',
@@ -3092,13 +2785,12 @@ function clientFromDB(r) {
     note: noteRaw.replace(/\s*\[⭐priority\]/g, '').trim(),
     priority: isPriority,
     responsible: r.responsible_name || '',
+    previousAgentIds: prevAgents,
+    transferredAway: prevAgents.includes(currentAgentRow?.id) && r.responsible_agent_id !== currentAgentRow?.id,
     created: r.created_at,
-    updatedAt: r.updated_at,
   };
 }
 function propToDB(p) {
-  // отправляем в БД только URL-фото (Storage), пропускаем data:URL
-  const photoUrls = (p.photos || []).filter(ph => typeof ph === 'string' && ph.startsWith('http'));
   return {
     id: p.id, complex: p.complex, title: p.title, kind: p.kind,
     bedrooms: p.bedrooms, reno: p.reno || null, area: p.area,
@@ -3107,7 +2799,6 @@ function propToDB(p) {
     agent_id: currentAgentRow?.id || null,
     agent_name: p.agent || currentAgentRow?.name,
     agent_phone: p.agentPhone || state.user.phone || null,
-    photos: photoUrls,
   };
 }
 function propFromDB(r) {
@@ -3116,10 +2807,8 @@ function propFromDB(r) {
     bedrooms: r.bedrooms, reno: r.reno || '', area: r.area || '',
     price: r.price || 0, commission: r.commission || '',
     district: r.district || '', developer: r.developer || '', note: r.note || '',
-    agent: r.agent_name || '', agentId: r.agent_id, agentPhone: r.agent_phone || '',
-    photos: Array.isArray(r.photos) ? r.photos : [],
-    nextEvent: null, nextEventTitle: '',
-    updatedAt: r.updated_at,
+    agent: r.agent_name || '', agentPhone: r.agent_phone || '',
+    photos: [], nextEvent: null, nextEventTitle: '',
   };
 }
 function taskToDB(t) {
@@ -3129,7 +2818,7 @@ function taskToDB(t) {
   };
 }
 function taskFromDB(r) {
-  return { id: r.id, title: r.title, when: r.when_at, done: !!r.done, clientId: r.client_id, updatedAt: r.updated_at };
+  return { id: r.id, title: r.title, when: r.when_at, done: !!r.done, clientId: r.client_id };
 }
 function dealToDB(d) {
   return {
@@ -3145,7 +2834,6 @@ function dealFromDB(r) {
     id: r.id, object: r.object_text, client: r.client_name,
     date: r.date, price: r.price || 0, commission: r.commission || 0,
     expenses: r.expenses || 0, received: r.received || 0, note: r.note || '',
-    updatedAt: r.updated_at,
   };
 }
 function partnerDealToDB(d) {
@@ -3179,7 +2867,7 @@ function tgChatToDB(c) {
   };
 }
 function tgChatFromDB(r) {
-  return { id: r.id, title: r.title || r.chat_id, chatId: r.chat_id, updatedAt: r.updated_at };
+  return { id: r.id, title: r.title || r.chat_id, chatId: r.chat_id };
 }
 function broadcastToDB(b) {
   // ключевой момент: в Supabase в chat_id кладём настоящий Telegram chat_id, а не локальный UUID канала
@@ -3208,7 +2896,6 @@ function broadcastFromDB(r) {
     sentAt: r.sent_at,
     errorText: r.error_text,
     createdBy: r.created_by,
-    updatedAt: r.updated_at,
   };
 }
 function agentToDB(name, phone, role) {
@@ -3216,138 +2903,24 @@ function agentToDB(name, phone, role) {
 }
 
 /* ============================== SUPABASE: AUTH ============================== */
-// Замок — пока не подтверждена сессия Supabase, прячем все данные приложения
-let authChecked = false;     // true когда мы хотя бы раз спросили Supabase про сессию
-let hasValidSession = false; // true если есть активная сессия (даже до полного pull-а данных)
-function shouldLockUI() {
-  if (!state.user.cloudConnected) return false; // никогда не подключались — offline-режим
-  if (!authChecked) return true;                 // ещё не проверили — скрываем
-  if (hasValidSession) return false;             // сессия валидна — показываем кеш сразу, данные подтянутся фоном
-  return true;                                    // подключались раньше, но сессии нет — замок
-}
-
 function initSupabase() {
-  if (!window.supabase) { console.warn('Supabase JS не загружен'); authChecked = true; render(); return; }
+  if (!window.supabase) { console.warn('Supabase JS не загружен'); return; }
   try {
-    supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true },
-      realtime: { params: { eventsPerSecond: 5 } },
-    });
-    // Защитный timeout — если getSession никогда не отвечает (нет сети, баг и т.п.), снимаем блок через 3с
-    const failsafe = setTimeout(() => {
-      if (!authChecked) {
-        console.warn('auth check timeout — снимаю блок');
-        authChecked = true;
-        render();
-      }
-    }, 3000);
+    supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     supa.auth.getSession().then(({ data }) => {
-      clearTimeout(failsafe);
-      if (data?.session?.user) {
-        hasValidSession = true;
-        authChecked = true;
-        render(); // показываем UI с кешем сразу
-        onAuthLogin(data.session.user); // pull данных и подписка — в фоне
-      } else {
-        authChecked = true;
-        render();
-      }
-    }).catch(e => {
-      clearTimeout(failsafe);
-      console.warn('getSession error:', e);
-      authChecked = true;
-      render();
+      if (data?.session?.user) onAuthLogin(data.session.user);
+      renderTopbar();
     });
     supa.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        hasValidSession = true;
-        authChecked = true;
-        render();
-        onAuthLogin(session.user);
-      }
-      if (event === 'SIGNED_OUT') {
-        hasValidSession = false;
-        currentAgentRow = null;
-        syncStatus = 'offline';
-        unsubscribeRealtime();
-        clearLocalUserState();
-        clearTombstones();
-        state.user.cloudConnected = false;
-        state.user.avatar = null;
-        state.user.email = '';
-        saveState(state);
-        authChecked = true;
-        render();
-      }
+      if (event === 'SIGNED_IN' && session?.user) onAuthLogin(session.user);
+      if (event === 'SIGNED_OUT') { currentAgentRow = null; syncStatus = 'offline'; render(); }
     });
-  } catch (e) { console.error('initSupabase:', e); authChecked = true; render(); }
-}
-
-/* ============================== REALTIME: мгновенная синхронизация ============================== */
-let realtimeChannel = null;
-function subscribeRealtime() {
-  if (!supa || !currentAgentRow || realtimeChannel) return;
-  try {
-    realtimeChannel = supa
-      .channel('agent-' + currentAgentRow.id)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, handleRealtimeChange.bind(null, 'client'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'properties' }, handleRealtimeChange.bind(null, 'property'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, handleRealtimeChange.bind(null, 'task'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deals' }, handleRealtimeChange.bind(null, 'deal'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tg_chats' }, handleRealtimeChange.bind(null, 'tgchat'))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tg_broadcasts' }, handleRealtimeChange.bind(null, 'broadcast'))
-      .subscribe(status => {
-        if (status === 'SUBSCRIBED') console.log('Realtime подключён');
-        if (status === 'CLOSED') console.warn('Realtime отключился');
-      });
-  } catch(e) { console.warn('subscribeRealtime:', e); }
-}
-function unsubscribeRealtime() {
-  if (realtimeChannel) {
-    try { supa.removeChannel(realtimeChannel); } catch(e) {}
-    realtimeChannel = null;
-  }
-}
-const stateMap = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', tgchat: 'tgChats', broadcast: 'broadcasts' };
-const fromDBMap = { client: typeof clientFromDB === 'function' ? clientFromDB : null,
-                    property: typeof propFromDB === 'function' ? propFromDB : null,
-                    task: typeof taskFromDB === 'function' ? taskFromDB : null,
-                    deal: typeof dealFromDB === 'function' ? dealFromDB : null,
-                    tgchat: typeof tgChatFromDB === 'function' ? tgChatFromDB : null,
-                    broadcast: typeof broadcastFromDB === 'function' ? broadcastFromDB : null };
-function handleRealtimeChange(type, payload) {
-  try {
-    const stateKey = stateMap[type];
-    const mapFn = ({ client: clientFromDB, property: propFromDB, task: taskFromDB, deal: dealFromDB, tgchat: tgChatFromDB, broadcast: broadcastFromDB })[type];
-    if (!stateKey || !mapFn) return;
-    const list = state[stateKey] || [];
-    const row = payload.new || payload.old;
-    if (!row?.id) return;
-    // Soft delete: UPDATE с deleted_at != null = удалить из локального стейта
-    if (payload.eventType === 'DELETE' || (payload.new && payload.new.deleted_at)) {
-      state[stateKey] = list.filter(x => x.id !== row.id);
-    } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-      const mapped = mapFn(payload.new);
-      const idx = list.findIndex(x => x.id === payload.new.id);
-      if (idx >= 0) list[idx] = mapped;
-      else list.push(mapped);
-      state[stateKey] = list;
-    }
-    saveState(state);
-    render();
-  } catch(e) { console.warn('handleRealtimeChange:', e); }
+  } catch (e) { console.error('initSupabase:', e); }
 }
 
 async function onAuthLogin(authUser) {
   syncStatus = 'syncing'; renderTopbar();
   try {
-    // ВАЖНО: если пользователь сменился — чистим локальный state чтобы данные предыдущего не «прилипли»
-    const lastAuthId = localStorage.getItem('lastAuthUserId');
-    if (lastAuthId && lastAuthId !== authUser.id) {
-      clearLocalUserState();
-    }
-    localStorage.setItem('lastAuthUserId', authUser.id);
-
     let { data: agent, error } = await supa.from('agents').select('*').eq('auth_user_id', authUser.id).maybeSingle();
     if (error) console.error('agents fetch:', error);
     let isNewAgent = false;
@@ -3359,12 +2932,10 @@ async function onAuthLogin(authUser) {
       const ins = await supa.from('agents').insert({
         auth_user_id: authUser.id,
         name: meta.name || state.user.name || authUser.email.split('@')[0],
-        role: 'Агент', // безопасность: при первом входе всегда Агент. Повышает Директор через UI
+        role: meta.role || 'Директор',
         city: state.user.city || 'Сочи',
         phone: meta.phone || '',
         referred_by_code: pendingRef,
-        consent_at: meta.consent_at || new Date().toISOString(),
-        consent_version: meta.consent_version || '2026-06-14',
       }).select().maybeSingle();
       agent = ins.data;
       if (ins.error) { alert('Ошибка создания профиля агента: ' + ins.error.message); return; }
@@ -3388,19 +2959,12 @@ async function onAuthLogin(authUser) {
     state.user.cloudConnected = true;
     state.user.refCode = agent.ref_code || state.user.refCode;
     state.user.subscriptionEnd = agent.subscription_end || state.user.subscriptionEnd;
-    // подтягиваем аватар с сервера если он там есть
-    if (agent.avatar_url) state.user.avatar = agent.avatar_url;
     saveState(state);
     await syncPullAll();
     syncStatus = 'synced';
-    authChecked = true;
-    hasValidSession = true;
-    subscribeRealtime();
     render();
   } catch (e) {
     console.error(e); syncStatus = 'error'; renderTopbar();
-    authChecked = true;
-    render();
     alert('Ошибка входа: ' + e.message);
   }
 }
@@ -3409,15 +2973,7 @@ async function cloudSignUp(email, password, name, role) {
   if (!supa) initSupabase();
   const { data, error } = await supa.auth.signUp({
     email, password,
-    options: {
-      data: {
-        name,
-        role: 'Агент', // безопасность: при signup всегда Агент, повышение — через Директора
-        phone: state.user.phone || '',
-        consent_at: new Date().toISOString(),
-        consent_version: '2026-06-14'
-      }
-    }
+    options: { data: { name, role, phone: state.user.phone || '' } }
   });
   if (error) { alert('Регистрация: ' + error.message); return false; }
   alert('Готово. Проверьте почту ' + email + ' — там письмо для подтверждения. После подтверждения войдите.');
@@ -3432,33 +2988,8 @@ async function cloudSignIn(email, password) {
 async function cloudSignOut() {
   if (!supa) return;
   await supa.auth.signOut();
-  // ВАЖНО: очищаем локальный state чтобы данные предыдущего пользователя не «прилипли» к следующему
-  clearLocalUserState();
-  clearTombstones();
   state.user.cloudConnected = false;
-  state.user.avatar = null;
-  state.user.email = '';
   saveState(state);
-  currentAgentRow = null;
-  render();
-}
-function clearLocalUserState() {
-  // очищаем чувствительные данные перед сменой аккаунта
-  state.clients = [];
-  state.properties = [];
-  state.tasks = [];
-  state.deals = [];
-  state.partnerDeals = [];
-  state.referrals = [];
-  state.tgChats = [];
-  state.broadcasts = [];
-  state.agentsFull = [];
-  state.agents = [];
-  state.agentPhones = {};
-  // pushQueue тоже — иначе через 1 сек упадёт push несуществующих данных
-  if (typeof pushQueue !== 'undefined') {
-    Object.keys(pushQueue).forEach(k => pushQueue[k] = []);
-  }
 }
 
 /* ============================== SUPABASE: SYNC ============================== */
@@ -3477,52 +3008,13 @@ async function syncPullAll() {
       supa.from('tg_chats').select('*'),
       supa.from('tg_broadcasts').select('*'),
     ]);
-    // MERGE: серверная RLS уже скрыла deleted_at-записи и удалённых клиентов другого агента
-    // Логика: last-write-wins по updated_at
-    // - Если server.updated_at >= local.updated_at → server wins
-    // - Если local.updated_at > server.updated_at → local wins, пушим в облако
-    // - Если запись только локально и не имеет server-id (новая) → пушим
+    // MERGE стратегия: серверные данные имеют приоритет, локальные «лишние» пушим в облако
     function mergeLists(localList, serverList, mapper, pushType) {
-      const serverById = new Map((serverList||[]).map(r => [r.id, r]));
-      const localById = new Map((localList||[]).map(c => [c.id, c]));
-      const allIds = new Set([...serverById.keys(), ...localById.keys()]);
-      const result = [];
-      allIds.forEach(id => {
-        const s = serverById.get(id);
-        const l = localById.get(id);
-        if (s && !l) {
-          result.push(mapper(s));
-        } else if (!s && l) {
-          // Локально есть, на сервере нет. Возможные причины:
-          // (a) запись только что создана локально, ещё не запушена — пушим
-          // (b) запись была удалена другим устройством через soft_delete — отбрасываем локальную
-          // (c) первая синхронизация после миграции на новую архитектуру — пушим, чтобы перенести
-          if (!l.updatedAt) {
-            // (c) — локальная запись из старой эпохи без updated_at, переносим в облако
-            queuePush(pushType, l);
-            result.push(l);
-          } else {
-            const localAge = Date.now() - new Date(l.updatedAt).getTime();
-            if (localAge < 30000) {
-              // (a) — свежая, пушим
-              queuePush(pushType, l);
-              result.push(l);
-            }
-            // (b) — старая локальная без серверной пары → сервер удалил, локальное чистим (не добавляем в result)
-          }
-        } else if (s && l) {
-          // оба есть — last-write-wins
-          const sTs = s.updated_at ? new Date(s.updated_at).getTime() : 0;
-          const lTs = l.updatedAt ? new Date(l.updatedAt).getTime() : 0;
-          if (lTs > sTs + 500) { // 500мс зазор чтобы свои же только что pushed не пересохранять
-            queuePush(pushType, l);
-            result.push(l);
-          } else {
-            result.push(mapper(s));
-          }
-        }
-      });
-      return result;
+      const serverIds = new Set(serverList.map(r => r.id));
+      const localOnly = (localList||[]).filter(c => !serverIds.has(c.id));
+      // отправляем локальные «лишние» в облако
+      localOnly.forEach(obj => queuePush(pushType, obj));
+      return [...serverList.map(mapper), ...localOnly];
     }
     if (cl.data) state.clients = mergeLists(state.clients, cl.data, clientFromDB, 'client');
     if (pr.data) {
@@ -3542,37 +3034,30 @@ async function syncPullAll() {
     // tg_chats и tg_broadcasts
     if (tch && !tch.error && tch.data) state.tgChats = tch.data.map(tgChatFromDB);
     if (tbr && !tbr.error && tbr.data) state.broadcasts = tbr.data.map(broadcastFromDB);
-    const { data: agents } = await supa.from('agents').select('id, name, phone, role, auth_user_id, avatar_url').order('created_at', { ascending: false });
+    const { data: agents } = await supa.from('agents').select('id, name, phone, auth_user_id, role, avatar_url').order('created_at', { ascending: false });
     if (agents) {
-      // дедуп по auth_user_id
+      // дедуп по auth_user_id — один пользователь = одна запись, берём самую свежую
       const byUser = new Map();
       const noUser = [];
       agents.forEach(a => {
         if (a.auth_user_id) {
           if (!byUser.has(a.auth_user_id)) byUser.set(a.auth_user_id, a);
-        } else noUser.push(a);
+        } else {
+          noUser.push(a);
+        }
       });
       state.agentsFull = [...byUser.values(), ...noUser];
       state.agents = state.agentsFull.map(a => a.name).filter(Boolean);
       state.agentPhones = {};
       state.agentsFull.forEach(a => { if (a.phone) state.agentPhones[a.name] = a.phone; });
-      // обновляем свой аватар с сервера если он там есть
-      if (currentAgentRow) {
-        const me = state.agentsFull.find(a => a.id === currentAgentRow.id);
-        if (me && me.avatar_url) state.user.avatar = me.avatar_url;
-      }
     }
     saveState(state);
     syncStatus = 'synced';
-    // повторяем удаления, которые не дошли при оффлайне
-    retryPendingDeletes();
   } catch (e) { console.error('pullAll:', e); syncStatus = 'error'; }
   renderTopbar();
 }
 
 function queuePush(type, obj) {
-  // помечаем локальное updated_at чтобы при merge выиграть у более старой серверной версии
-  obj.updatedAt = new Date().toISOString();
   if (!supa || !currentAgentRow) return;
   pushQueue.set(type + ':' + obj.id, { type, obj });
   syncStatus = 'syncing'; renderTopbar();
@@ -3590,8 +3075,6 @@ async function flushPush() {
   for (const { type, obj } of items) {
     // если эта таблица ранее ругалась 3+ раз — не дёргаем больше до перезагрузки страницы
     if (failedPushTypes.has(type)) continue;
-    // НЕ пушим записи которые помечены как удалённые (tombstone) — иначе они «воскреснут»
-    if (isTombstoned(type, obj.id)) continue;
     try {
       const { error } = await supa.from(tables[type]).upsert(mappers[type](obj));
       if (error) {
@@ -3613,100 +3096,32 @@ function showSyncError() {
   if (!syncLastError) { alert('Последняя синхронизация прошла без ошибок'); return; }
   alert('Ошибка синхронизации:\n\n' + syncLastError + '\n\nЧасто помогает:\n1. Запустить supabase-fix-rls.sql в SQL Editor\n2. Проверить вход в облако\n3. Нажать «Обновить» в Профиле');
 }
-// SOFT DELETE архитектура:
-// Удаление = установить deleted_at на сервере. Сервер — единый источник правды.
-// Никаких локальных «надгробий» больше не нужно — Realtime/Pull увидят deleted_at и удалят везде.
-// Очередь отложенных правок при удалении — отменяется.
-
-// Локальная очередь «висящих» удалений (для оффлайна) — повторим при следующей синхронизации
-let pendingDeletes = JSON.parse(localStorage.getItem('pendingDeletes') || '{}');
-function savePendingDeletes() { localStorage.setItem('pendingDeletes', JSON.stringify(pendingDeletes)); }
-function queueDelete(type, recordId) {
-  if (!pendingDeletes[type]) pendingDeletes[type] = {};
-  pendingDeletes[type][recordId] = Date.now();
-  savePendingDeletes();
-}
-function unqueueDelete(type, recordId) {
-  if (pendingDeletes[type]) {
-    delete pendingDeletes[type][recordId];
-    savePendingDeletes();
-  }
-}
-// Совместимость: оставляем заглушки для старого кода
-function isTombstoned() { return false; }
-function clearTombstones() { pendingDeletes = {}; savePendingDeletes(); }
-
-const tableNames = {
-  client: 'clients', property: 'properties', task: 'tasks', deal: 'deals',
-  partnerDeal: 'partner_deals', tgchat: 'tg_chats', broadcast: 'tg_broadcasts'
-};
-
 async function syncDelete(type, recordId) {
-  // Удаляем из локального стейта мгновенно (опт. UI), отменяем pending upsert
-  if (pushQueue && pushQueue.delete) {
-    pushQueue.delete(type + ':' + recordId);
-  }
-  if (!supa || !currentAgentRow) {
-    // оффлайн — кидаем в очередь
-    queueDelete(type, recordId);
-    return;
-  }
-  const tableName = tableNames[type];
-  if (!tableName) return;
-  syncStatus = 'syncing'; renderTopbar();
-  try {
-    // soft_delete RPC — single source of truth для удалений
-    const { data, error } = await supa.rpc('soft_delete', { p_table: tableName, p_id: recordId });
-    if (error) {
-      console.warn('syncDelete RPC error', type, recordId, error);
-      // оффлайн или RLS — кидаем в pending для повторной попытки
-      queueDelete(type, recordId);
-      syncStatus = 'error';
-    } else {
-      unqueueDelete(type, recordId);
-      syncStatus = 'synced';
-    }
-  } catch(e) {
-    console.warn('syncDelete exception', e);
-    queueDelete(type, recordId);
-    syncStatus = 'error';
-  }
-  renderTopbar();
-}
-
-// При входе/sync — повторяем отложенные удаления (для оффлайн-сценария)
-async function retryPendingDeletes() {
   if (!supa || !currentAgentRow) return;
-  for (const type of Object.keys(pendingDeletes)) {
-    for (const id of Object.keys(pendingDeletes[type] || {})) {
-      await syncDelete(type, id);
-    }
-  }
+  const tables = { client: 'clients', property: 'properties', task: 'tasks', deal: 'deals', tgchat: 'tg_chats', broadcast: 'tg_broadcasts' };
+  if (!tables[type]) return;
+  syncStatus = 'syncing'; renderTopbar();
+  const { error } = await supa.from(tables[type]).delete().eq('id', recordId);
+  syncStatus = error ? 'error' : 'synced';
+  renderTopbar();
 }
 
 /* ============================== SUPABASE: UI ============================== */
 function openCloudLogin() {
   openModal(`
-    <h2>Облако: вход</h2>
+    <h2>Облако</h2>
     <p class="meta" style="margin-bottom: 14px;">Войдите чтобы данные синхронизировались между всеми устройствами.</p>
     <div class="tabs" style="margin-bottom: 14px;">
-      <button class="tab active" onclick="document.getElementById('cl-mode').value='in'; document.getElementById('cl-name-field').style.display='none'; document.getElementById('cl-consent-field').style.display='none'; document.getElementById('cl-submit').textContent='Войти';">Войти</button>
-      <button class="tab" onclick="document.getElementById('cl-mode').value='up'; document.getElementById('cl-name-field').style.display='block'; document.getElementById('cl-consent-field').style.display='block'; document.getElementById('cl-submit').textContent='Зарегистрироваться';">Регистрация</button>
+      <button class="tab active" id="cl-tab-in" onclick="document.getElementById('cl-mode').value='in'; document.querySelectorAll('.cl-signup').forEach(el=>el.style.display='none'); document.getElementById('cl-submit').textContent='Войти'; document.getElementById('cl-tab-in').classList.add('active'); document.getElementById('cl-tab-up').classList.remove('active');">Войти</button>
+      <button class="tab" id="cl-tab-up" onclick="document.getElementById('cl-mode').value='up'; document.querySelectorAll('.cl-signup').forEach(el=>el.style.display='block'); document.getElementById('cl-submit').textContent='Зарегистрироваться'; document.getElementById('cl-tab-up').classList.add('active'); document.getElementById('cl-tab-in').classList.remove('active');">Регистрация</button>
     </div>
     <input id="cl-mode" type="hidden" value="in">
     <div class="field"><label>Email</label><input id="cl-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
     <div class="field"><label>Пароль</label><input id="cl-password" type="password" autocomplete="current-password" placeholder="минимум 6 знаков"></div>
-    <div class="field" id="cl-name-field" style="display:none;"><label>Имя</label><input id="cl-name" value="${state.user.name||''}"></div>
-    <div id="cl-consent-field" style="display:none; padding: 12px; background: var(--surface-2); border-radius: 8px; margin-bottom: 14px;">
-      <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-size: 12px; line-height: 1.45;">
-        <input id="cl-consent" type="checkbox" style="margin-top: 3px; flex-shrink: 0;">
-        <span style="color: var(--text);">Я согласен на обработку моих персональных данных в соответствии с
-          <a href="privacy.html" target="_blank" style="color: var(--accent);">Политикой конфиденциальности</a>
-          (152-ФЗ). Подтверждаю что мне исполнилось 18 лет.
-        </span>
-      </label>
-    </div>
+    <div class="field cl-signup" style="display:none;"><label>ФИО агента</label><input id="cl-name" value="${state.user.name||''}" placeholder="Иванов Иван"></div>
+    <div class="field cl-signup" style="display:none;"><label>Телефон</label><input id="cl-phone" type="tel" value="${state.user.phone||''}" placeholder="+7..."></div>
     <button id="cl-submit" class="btn" onclick="submitCloudAuth()">Войти</button>
+    <p class="meta" style="margin-top: 12px; font-size: 11px; text-align: center;">При регистрации вы становитесь Агентом. Руководитель агентства может повысить вас до Руководителя или Директора.</p>
   `);
 }
 async function submitCloudAuth() {
@@ -3718,10 +3133,9 @@ async function submitCloudAuth() {
     const ok = await cloudSignIn(email, password);
     if (ok) closeModal();
   } else {
-    const consent = document.getElementById('cl-consent')?.checked;
-    if (!consent) { alert('Для регистрации требуется согласие на обработку персональных данных'); return; }
     const name = document.getElementById('cl-name').value.trim() || email.split('@')[0];
-    // Роль при самостоятельной регистрации всегда «Агент» — повышает Директор отдельно
+    const phone = document.getElementById('cl-phone').value.trim();
+    state.user.phone = phone; // запоминаем чтобы попало в agent_metadata
     const ok = await cloudSignUp(email, password, name, 'Агент');
     if (ok) closeModal();
   }
@@ -3802,188 +3216,9 @@ window.addEventListener('popstate', e => {
 // заменяем "уход" из приложения на возврат на главную
 history.replaceState({ route, crmTab }, '', location.hash || '#' + route);
 
-/* ============================== REMINDERS ============================== */
-function initReminders() {
-  // запросить разрешение на пуши при первом клике пользователя
-  if ('Notification' in window && Notification.permission === 'default') {
-    document.addEventListener('click', () => {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().catch(()=>{});
-      }
-    }, { once: true });
-  }
-  // проверять очередь раз в минуту
-  setInterval(checkReminders, 60000);
-  // первая проверка через 5 секунд после старта
-  setTimeout(checkReminders, 5000);
-}
-
-function checkReminders() {
-  if (!state.notifiedIds) state.notifiedIds = [];
-  // обнуляем список оповещённых в начале каждого дня
-  if (!state.notifiedDate || state.notifiedDate !== new Date().toDateString()) {
-    state.notifiedIds = [];
-    state.notifiedDate = new Date().toDateString();
-  }
-  const now = Date.now();
-  const horizonMin = 30; // напоминаем за 30 минут до события
-  const due = [];
-
-  // задачи
-  state.tasks.forEach(t => {
-    if (t.done || !t.when) return;
-    const diff = (new Date(t.when).getTime() - now) / 60000;
-    if (diff >= -1 && diff <= horizonMin && !state.notifiedIds.includes('task_'+t.id)) {
-      due.push({ id: 'task_'+t.id, kind: 'Задача', title: t.title, when: t.when, openFn: `openTask('${t.id}')` });
-    }
-  });
-
-  // клиенты — nextContact
-  visibleClients().forEach(c => {
-    if (!c.nextContact) return;
-    const diff = (new Date(c.nextContact).getTime() - now) / 60000;
-    if (diff >= -1 && diff <= horizonMin && !state.notifiedIds.includes('client_'+c.id)) {
-      due.push({
-        id: 'client_'+c.id, kind: 'Клиент',
-        title: (c.nextAction || 'Контакт') + ' · ' + c.name,
-        when: c.nextContact, openFn: `openClient('${c.id}')`,
-      });
-    }
-  });
-
-  // объекты — nextEvent
-  state.properties.forEach(p => {
-    if (!p.nextEvent) return;
-    const diff = (new Date(p.nextEvent).getTime() - now) / 60000;
-    if (diff >= -1 && diff <= horizonMin && !state.notifiedIds.includes('prop_'+p.id)) {
-      due.push({
-        id: 'prop_'+p.id, kind: 'Объект',
-        title: (p.nextEventTitle || 'Событие') + ' · ' + (p.complex || p.title),
-        when: p.nextEvent, openFn: `openProperty('${p.id}')`,
-      });
-    }
-  });
-
-  due.forEach(d => {
-    fireReminder(d);
-    state.notifiedIds.push(d.id);
-  });
-  if (due.length) saveState(state);
-}
-
-function fireReminder(d) {
-  const time = fmtTime(d.when);
-  // браузерный пуш если разрешено
-  if ('Notification' in window && Notification.permission === 'granted') {
-    try {
-      const n = new Notification('CRM Агента · ' + time, {
-        body: d.title, icon: 'icons/icon-192.png', tag: d.id, badge: 'icons/icon-192.png',
-      });
-      n.onclick = () => { window.focus(); try { eval(d.openFn); } catch(e){} n.close(); };
-    } catch(e) { console.warn(e); }
-  }
-  // плюс показываем внутренний баннер в любом случае
-  showReminderBanner(d, time);
-}
-
-function showReminderBanner(d, time) {
-  const banner = document.createElement('div');
-  banner.className = 'reminder-banner';
-  banner.innerHTML = `
-    <strong>⏰ ${time} · ${d.kind}</strong>
-    <div>${d.title}</div>
-    <button class="rb-close" aria-label="Закрыть">×</button>
-  `;
-  banner.onclick = e => {
-    if (e.target.classList.contains('rb-close')) { banner.remove(); return; }
-    banner.remove();
-    try { eval(d.openFn); } catch(err) {}
-  };
-  document.body.appendChild(banner);
-  // автоматически убрать через 45 секунд
-  setTimeout(() => banner.remove(), 45000);
-}
-
-/* ============================== TOAST (ненавязчивые уведомления) ============================== */
-// Используем вместо alert() для несущественных событий. alert() остаётся для критики (подтверждения удаления и т.п.)
-function toast(message, kind = 'info', durationMs = 4000) {
-  let layer = document.getElementById('toast-layer');
-  if (!layer) {
-    layer = document.createElement('div');
-    layer.id = 'toast-layer';
-    layer.style.cssText = 'position:fixed; left:0; right:0; bottom: calc(80px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; align-items:center; gap:8px; z-index: 9999; pointer-events:none;';
-    document.body.appendChild(layer);
-  }
-  const el = document.createElement('div');
-  const bg = kind === 'error' ? 'var(--danger)' : kind === 'success' ? 'var(--success)' : 'var(--surface-2)';
-  el.style.cssText = `background:${bg}; color: var(--text); padding: 10px 16px; border-radius: 10px; font-size: 13px; max-width: 90%; box-shadow: 0 6px 24px rgba(0,0,0,.35); pointer-events: auto; animation: tslide .25s ease-out;`;
-  el.textContent = message;
-  layer.appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, durationMs);
-}
-// добавляем CSS-анимацию для toast однократно
-if (!document.getElementById('toast-style')) {
-  const s = document.createElement('style');
-  s.id = 'toast-style';
-  s.textContent = '@keyframes tslide { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }';
-  document.head.appendChild(s);
-}
-
-/* ============================== ONLINE/OFFLINE ============================== */
-let isOnline = navigator.onLine;
-function updateOnlineStatus() {
-  const wasOffline = !isOnline;
-  isOnline = navigator.onLine;
-  if (isOnline && wasOffline) {
-    toast('Сеть восстановлена — синхронизируем', 'success', 2500);
-    // мгновенно подтягиваем изменения и повторяем pending удаления
-    if (supa && currentAgentRow) {
-      flushPush().then(() => syncPullAll());
-    }
-  } else if (!isOnline) {
-    toast('Нет сети — изменения сохраняются локально и отправятся при подключении', 'info', 3500);
-  }
-  renderTopbar();
-}
-window.addEventListener('online', updateOnlineStatus);
-window.addEventListener('offline', updateOnlineStatus);
-
-/* ============================== GLOBAL ERROR BOUNDARY ============================== */
-// чтобы непойманная ошибка в одной кнопке не ломала всё приложение
-window.addEventListener('error', (e) => {
-  console.error('global error:', e.error || e.message);
-  // не показываем toast на каждую — иначе зальёт спамом. Показываем только если приложение реально упало.
-  if (e.error && e.error.message && !/(ResizeObserver|aborted|Failed to fetch)/i.test(e.error.message)) {
-    toast('Произошла ошибка. Если повторяется — перезагрузите страницу', 'error');
-  }
-});
-window.addEventListener('unhandledrejection', (e) => {
-  console.error('unhandled promise:', e.reason);
-});
-
 /* ============================== INIT ============================== */
 render();
 initSupabase();
-initReminders();
-
-/* ============================== SERVICE WORKER ============================== */
-// Регистрация SW для offline-режима и быстрой загрузки повторных визитов
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').then(reg => {
-      // Если есть новая версия — обновляемся
-      reg.addEventListener('updatefound', () => {
-        const sw = reg.installing;
-        if (!sw) return;
-        sw.addEventListener('statechange', () => {
-          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-            console.log('Доступна новая версия приложения');
-          }
-        });
-      });
-    }).catch(err => console.warn('SW register failed:', err));
-  });
-}
 </script>
 </body>
 </html>
